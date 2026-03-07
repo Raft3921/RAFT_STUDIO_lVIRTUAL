@@ -12,32 +12,6 @@ const CHARACTER_DEFS = [
   { id: "gyoza", name: "ギョーザ" },
 ];
 
-const SPRITE_FILES = {
-  raft: new Set([
-    "back_idle1.png",
-    "back_idle2.png",
-    "back_run1.png",
-    "back_run2.png",
-    "front_idle1.png",
-    "front_idle2.png",
-    "front_run1.png",
-    "front_run2.png",
-  ]),
-  mai: new Set([
-    "back_idle1.png",
-    "back_idle2.png",
-    "back_run1.png",
-    "back_run2.png",
-    "front_idle1.png",
-  ]),
-  yansan: new Set(["idle1.png", "idle2.png"]),
-  tanutsuna: new Set(["idle1.png", "idle2.png"]),
-  muto: new Set(["idle1.png", "idle2.png"]),
-  moron: new Set(["idle1.png", "idle2.png"]),
-  week: new Set(["idle1.png", "idle2.png"]),
-  gyoza: new Set(["idle1.png", "idle2.png"]),
-};
-
 const WORLD_WIDTH = 4800;
 const WORLD_HEIGHT = 3600;
 const PLAYER_SPEED = 170;
@@ -118,34 +92,19 @@ function getImage(path) {
 
 function getSpriteImage(characterId, dir, moving, frame) {
   const base = `./assets/player/${characterId}`;
-  const files = SPRITE_FILES[characterId] || new Set();
   const frameSafe = frame === 2 ? 2 : 1;
   const runToken = frame === 3 ? "run1" : frame === 4 ? "run2" : null;
+  const dirToken = dir === "left" || dir === "right" ? "side" : dir;
   const candidates = [];
 
   if (moving) {
     if (runToken) {
-      if (files.has(`${dir}_${runToken}.png`)) {
-        candidates.push(`${base}/${dir}_${runToken}.png`);
-      }
-      if (files.has(`${runToken}.png`)) {
-        candidates.push(`${base}/${runToken}.png`);
-      }
+      candidates.push(`${base}/${dirToken}_${runToken}.png`);
     } else {
-      if (files.has(`${dir}_idle1.png`)) {
-        candidates.push(`${base}/${dir}_idle1.png`);
-      }
-      if (files.has("idle1.png")) {
-        candidates.push(`${base}/idle1.png`);
-      }
+      candidates.push(`${base}/${dirToken}_idle1.png`);
     }
   } else {
-    if (files.has(`${dir}_idle${frameSafe}.png`)) {
-      candidates.push(`${base}/${dir}_idle${frameSafe}.png`);
-    }
-    if (files.has(`idle${frameSafe}.png`)) {
-      candidates.push(`${base}/idle${frameSafe}.png`);
-    }
+    candidates.push(`${base}/${dirToken}_idle${frameSafe}.png`);
   }
 
   for (const path of candidates) {
