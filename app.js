@@ -38,8 +38,9 @@ const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
 const NETWORK_SYNC_INTERVAL_MS = 80;
-const REMOTE_SMOOTH_RATE = 10;
+const REMOTE_SMOOTH_RATE = 14;
 const REMOTE_SNAP_DISTANCE = 220;
+const REMOTE_EXTRAPOLATION_MAX_SEC = 0.22;
 const ASSET_REV = `${Date.now()}`;
 const WOOD_TILE_PATH = "./assets/tile/wood.png";
 const PLAYER_SELECT_FRAME_PATH = "./assets/ui/player_select.png";
@@ -986,6 +987,7 @@ function drawToast() {
 function updateRemoteVisuals(dt) {
   const alpha = 1 - Math.exp(-REMOTE_SMOOTH_RATE * dt);
   const activeRemoteIds = new Set();
+  const now = nowMs();
 
   playersMap.forEach((player, id) => {
     if (id === clientId || !player?.characterId) {
@@ -993,8 +995,15 @@ function updateRemoteVisuals(dt) {
     }
 
     activeRemoteIds.add(id);
-    const targetX = Number(player.x) || 0;
-    const targetY = Number(player.y) || 0;
+    const baseX = Number(player.x) || 0;
+    const baseY = Number(player.y) || 0;
+    const vx = Number(player.vx) || 0;
+    const vy = Number(player.vy) || 0;
+    const receivedAt = Number(player._receivedAt) || now;
+    const ageSec = Math.min(REMOTE_EXTRAPOLATION_MAX_SEC, Math.max(0, (now - receivedAt) / 1000));
+    const isMoving = Boolean(player.moving) || Math.hypot(vx, vy) > 6;
+    const targetX = baseX + (isMoving ? vx * ageSec : 0);
+    const targetY = baseY + (isMoving ? vy * ageSec : 0);
     const current = remoteVisuals.get(id);
 
     if (!current) {
@@ -1190,9 +1199,15 @@ function rebuildMapFromSnapshot(target, snapshot) {
   if (!snapshot.exists()) {
     return;
   }
+  const receivedAt = nowMs();
   snapshot.forEach((child) => {
     if (child.key) {
-      target.set(child.key, child.val());
+      const value = child.val();
+      if (target === playersMap && value && typeof value === "object") {
+        target.set(child.key, { ...value, _receivedAt: receivedAt });
+      } else {
+        target.set(child.key, value);
+      }
     }
   });
 }
