@@ -1,4 +1,4 @@
-import { joinRoom } from "https://esm.sh/trystero@0.21.5/torrent";
+import { joinRoom } from "https://esm.sh/trystero@0.21.5/nostr";
 
 const CHARACTER_DEFS = [
   { id: "raft", name: "RAFT" },
@@ -1176,7 +1176,19 @@ function setupSync() {
   locksMap = new Map();
   syncState.rtc = "connected";
 
-  p2pRoom = joinRoom({ appId: "raft-studio-virtual-v1" }, roomId);
+  p2pRoom = joinRoom(
+    {
+      appId: "raft-studio-virtual-v1",
+      relayUrls: [
+        "wss://relay.damus.io",
+        "wss://nos.lol",
+        "wss://relay.nostr.band",
+        "wss://offchain.pub",
+      ],
+      relayRedundancy: 4,
+    },
+    roomId
+  );
   const peerClientMap = new Map();
   const [sendRemotePresence, onRemotePresence] = p2pRoom.makeAction("presence");
   sendPresence = sendRemotePresence;
