@@ -269,7 +269,7 @@ function startCardPreviewLoop() {
   setInterval(() => {
     const frame = Math.floor(performance.now() / 350) % 2 === 0 ? 1 : 2;
     cardViews.forEach((card) => {
-      const sprite = getSpriteImage(card.characterId, "back", false, frame);
+      const sprite = getSpriteImage(card.characterId, "front", false, frame);
       if (sprite) {
         card.img.src = sprite.src;
         card.img.style.visibility = "visible";
