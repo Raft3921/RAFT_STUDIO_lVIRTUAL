@@ -1,6 +1,4 @@
-import * as Y from "https://esm.sh/yjs@13.6.24";
-import { WebsocketProvider } from "https://esm.sh/y-websocket@1.5.4?deps=yjs@13.6.24";
-import { WebrtcProvider } from "https://esm.sh/y-webrtc@10.3.0?deps=yjs@13.6.24";
+import { joinRoom } from "https://esm.sh/trystero@0.21.5/torrent";
 
 const CHARACTER_DEFS = [
   { id: "raft", name: "RAFT" },
@@ -218,9 +216,6 @@ const uiState = {
   toastUntil: 0,
 };
 const joystickState = { activePointerId: null };
-let doc;
-let wsProvider;
-let rtcProvider;
 let playersMap;
 let locksMap;
 let roomId = "";
@@ -229,22 +224,26 @@ let rafId = 0;
 let accumulator = 0;
 let lastMs = performance.now();
 let heartbeatTimer = 0;
+let p2pRoom = null;
+let sendPresence = null;
 const cameraState = { x: 0, y: 0, initialized: false };
-const syncState = { ws: "connecting", rtc: "connecting" };
+const syncState = { rtc: "connecting" };
+const networkState = { peers: new Set() };
 const transparentSprite = document.createElement("canvas");
 transparentSprite.width = 32;
 transparentSprite.height = 32;
 
 function deriveRoomId() {
-  const hashRoom = window.location.hash.replace(/^#/, "").trim();
-  if (hashRoom) {
-    return hashRoom;
+  const hashRoom = window.location.hash.replace(/^#/, "").trim().toLowerCase();
+  const clean = hashRoom.replace(/[^a-z0-9_-]/g, "");
+  if (clean) {
+    return clean;
   }
   return "raft-virtual-room";
 }
 
 function setRoom(room) {
-  const clean = room.trim().replace(/[^a-zA-Z0-9_-]/g, "");
+  const clean = room.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
   if (!clean) {
     return;
   }
@@ -347,6 +346,7 @@ function releaseMyLock() {
   const lock = locksMap.get(localPlayer.characterId);
   if (lock?.clientId === clientId) {
     locksMap.delete(localPlayer.characterId);
+    broadcastPresence();
   }
 }
 
@@ -370,8 +370,10 @@ function acquireCharacter(characterId) {
   localPlayer.characterId = characterId;
   localPlayer.name = def?.name || characterId;
 
-  locksMap.set(characterId, { clientId, ts: nowMs() });
+  const stamp = nowMs();
+  locksMap.set(characterId, { clientId, ts: stamp, acquiredAt: stamp });
   upsertLocalPlayer();
+  broadcastPresence();
   setUiMode("game");
   requestGameFullscreen();
   return true;
@@ -786,10 +788,9 @@ function drawSelectionUi() {
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillText(`ROOM ID: ${roomId}`, window.innerWidth / 2, 86);
-  const wsOnline = Boolean(wsProvider?.wsconnected) || syncState.ws === "connected";
-  const rtcOnline = (rtcProvider?.webrtcConns?.size || 0) > 0 || syncState.rtc === "connected";
-  const online = wsOnline || rtcOnline ? "ONLINE" : "CONNECTING";
-  const peers = Math.max(0, (playersMap?.size || 0) - (localPlayer.characterId ? 1 : 0));
+  const rtcOnline = syncState.rtc === "connected";
+  const online = rtcOnline ? "ONLINE" : "CONNECTING";
+  const peers = networkState.peers.size;
   ctx.fillStyle = online === "ONLINE" ? "#7ef0a5" : "#ffd085";
   ctx.font = "bold 12px sans-serif";
   ctx.fillText(`SYNC: ${online} / PEERS: ${peers}`, window.innerWidth / 2, 104);
@@ -1071,53 +1072,162 @@ function setupJoystick() {
   });
 }
 
+function removeLocksByClient(targetClientId) {
+  locksMap.forEach((lock, characterId) => {
+    if (lock?.clientId === targetClientId) {
+      locksMap.delete(characterId);
+    }
+  });
+}
+
+function buildLocalPresence() {
+  const lock = localPlayer.characterId ? locksMap.get(localPlayer.characterId) : null;
+  return {
+    clientId,
+    player: localPlayer.characterId
+      ? {
+          x: localPlayer.x,
+          y: localPlayer.y,
+          vx: localPlayer.vx,
+          vy: localPlayer.vy,
+          dir: localPlayer.dir,
+          moving: localPlayer.moving,
+          characterId: localPlayer.characterId,
+          name: localPlayer.name,
+        }
+      : null,
+    lock: localPlayer.characterId && lock
+      ? {
+          characterId: localPlayer.characterId,
+          ts: Number(lock.ts) || nowMs(),
+          acquiredAt: Number(lock.acquiredAt) || Number(lock.ts) || nowMs(),
+        }
+      : null,
+  };
+}
+
+function broadcastPresence() {
+  if (!sendPresence) {
+    return;
+  }
+  sendPresence(buildLocalPresence());
+}
+
+function applyRemotePresence(payload, peerId) {
+  if (!payload || typeof payload !== "object" || typeof payload.clientId !== "string") {
+    return;
+  }
+  const remoteClientId = payload.clientId;
+  if (!remoteClientId || remoteClientId === clientId) {
+    return;
+  }
+
+  networkState.peers.add(peerId);
+
+  if (payload.player && typeof payload.player === "object") {
+    playersMap.set(remoteClientId, {
+      x: Number(payload.player.x) || 0,
+      y: Number(payload.player.y) || 0,
+      vx: Number(payload.player.vx) || 0,
+      vy: Number(payload.player.vy) || 0,
+      dir: payload.player.dir || "front",
+      moving: Boolean(payload.player.moving),
+      characterId: payload.player.characterId || null,
+      name: payload.player.name || "",
+      lastSeen: nowMs(),
+    });
+  } else {
+    playersMap.delete(remoteClientId);
+  }
+
+  removeLocksByClient(remoteClientId);
+
+  const remoteLock = payload.lock;
+  if (remoteLock && typeof remoteLock === "object" && typeof remoteLock.characterId === "string") {
+    const candidate = {
+      clientId: remoteClientId,
+      ts: Number(remoteLock.ts) || nowMs(),
+      acquiredAt: Number(remoteLock.acquiredAt) || Number(remoteLock.ts) || nowMs(),
+    };
+    const current = locksMap.get(remoteLock.characterId);
+    if (!current || current.clientId === remoteClientId) {
+      locksMap.set(remoteLock.characterId, candidate);
+    } else {
+      const currentAcquiredAt = Number(current.acquiredAt) || Number(current.ts) || nowMs();
+      const candidateWins =
+        candidate.acquiredAt < currentAcquiredAt ||
+        (candidate.acquiredAt === currentAcquiredAt && candidate.clientId < current.clientId);
+      if (candidateWins) {
+        locksMap.set(remoteLock.characterId, candidate);
+      }
+    }
+  }
+
+  ensureLocalCharacterOwnership();
+}
+
 function setupSync() {
-  doc = new Y.Doc();
-  wsProvider = new WebsocketProvider("wss://demos.yjs.dev", roomId, doc, {
-    connect: true,
+  if (heartbeatTimer) {
+    window.clearInterval(heartbeatTimer);
+  }
+  p2pRoom?.leave?.();
+  networkState.peers.clear();
+  playersMap = new Map();
+  locksMap = new Map();
+  syncState.rtc = "connected";
+
+  p2pRoom = joinRoom({ appId: "raft-studio-virtual-v1" }, roomId);
+  const peerClientMap = new Map();
+  const [sendRemotePresence, onRemotePresence] = p2pRoom.makeAction("presence");
+  sendPresence = sendRemotePresence;
+
+  onRemotePresence((payload, peerId) => {
+    if (payload?.clientId && typeof payload.clientId === "string") {
+      peerClientMap.set(peerId, payload.clientId);
+    }
+    applyRemotePresence(payload, peerId);
+    syncState.rtc = "connected";
   });
-  rtcProvider = new WebrtcProvider(roomId, doc, {
-    maxConns: 30,
-    filterBcConns: false,
+
+  p2pRoom.onPeerJoin((peerId) => {
+    networkState.peers.add(peerId);
+    syncState.rtc = "connected";
+    broadcastPresence();
   });
-  wsProvider.on("status", (event) => {
-    syncState.ws = event.status;
+
+  p2pRoom.onPeerLeave((peerId) => {
+    networkState.peers.delete(peerId);
+    const remoteClientId = peerClientMap.get(peerId);
+    if (remoteClientId) {
+      playersMap.delete(remoteClientId);
+      removeLocksByClient(remoteClientId);
+      peerClientMap.delete(peerId);
+    }
   });
-  rtcProvider.on("status", (event) => {
-    syncState.rtc = event.status;
-  });
-  wsProvider.on("connection-close", () => {
-    syncState.ws = "disconnected";
-  });
-  wsProvider.on("connection-error", () => {
-    syncState.ws = "disconnected";
-  });
-  playersMap = doc.getMap("players");
-  locksMap = doc.getMap("locks");
 
   heartbeatTimer = window.setInterval(() => {
     cleanupStalePlayers();
     cleanupStaleLocks();
     ensureLocalCharacterOwnership();
 
-    if (!wsProvider?.wsconnected && wsProvider?.shouldConnect !== false) {
-      wsProvider.connect();
-    }
-    if (rtcProvider && (rtcProvider.shouldConnect === false)) {
-      rtcProvider.connect();
-    }
-
     if (localPlayer.characterId) {
-      locksMap.set(localPlayer.characterId, { clientId, ts: nowMs() });
+      const prev = locksMap.get(localPlayer.characterId);
+      const stamp = nowMs();
+      locksMap.set(localPlayer.characterId, {
+        clientId,
+        ts: stamp,
+        acquiredAt: Number(prev?.acquiredAt) || stamp,
+      });
       upsertLocalPlayer();
     }
-  }, 1000);
+    broadcastPresence();
+  }, 700);
 
   window.addEventListener("beforeunload", () => {
     releaseMyLock();
     playersMap.delete(clientId);
-    wsProvider?.destroy?.();
-    rtcProvider?.destroy?.();
+    broadcastPresence();
+    p2pRoom?.leave?.();
   });
 }
 
