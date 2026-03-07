@@ -526,9 +526,7 @@ function drawActor(player, cameraX, cameraY) {
   const screenX = player.x - cameraX;
   const screenY = player.y - cameraY;
   const frame = player.moving
-    ? Math.floor(animClock * 10) % 2 === 0
-      ? 3
-      : 4
+    ? [3, 1, 4, 1][Math.floor(animClock * 10) % 4]
     : Math.floor(animClock * 5) % 2 === 0
       ? 1
       : 2;
