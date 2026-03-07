@@ -19,6 +19,7 @@ const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
 const ASSET_REV = `${Date.now()}`;
+const WOOD_TILE_PATH = "./assets/tile/wood.png";
 const SPRITE_PATHS = {
   raft: {
     front: {
@@ -535,7 +536,7 @@ function drawActor(player, cameraX, cameraY) {
 
   ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.beginPath();
-  ctx.ellipse(screenX, screenY + 10, 15, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(screenX, screenY + 18, 15, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.save();
@@ -555,23 +556,32 @@ function drawActor(player, cameraX, cameraY) {
 }
 
 function drawBackground(cameraX, cameraY) {
-  ctx.fillStyle = "#dce7d6";
+  ctx.fillStyle = "#d8c7a8";
   ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
-  const gridSize = 64;
-  const startX = -((cameraX % gridSize) + gridSize) % gridSize;
-  const startY = -((cameraY % gridSize) + gridSize) % gridSize;
+  const wood = getImage(WOOD_TILE_PATH);
+  const tileSize = 64;
+  const startX = -((cameraX % tileSize) + tileSize) % tileSize;
+  const startY = -((cameraY % tileSize) + tileSize) % tileSize;
 
-  ctx.strokeStyle = "rgba(69,94,76,0.18)";
+  if (wood && wood.complete && wood.naturalWidth > 0) {
+    for (let y = startY; y < window.innerHeight; y += tileSize) {
+      for (let x = startX; x < window.innerWidth; x += tileSize) {
+        ctx.drawImage(wood, x, y, tileSize, tileSize);
+      }
+    }
+  }
+
+  ctx.strokeStyle = "rgba(80,54,24,0.15)";
   ctx.lineWidth = 1;
-  for (let x = startX; x < window.innerWidth; x += gridSize) {
+  for (let x = startX; x < window.innerWidth; x += tileSize) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, window.innerHeight);
     ctx.stroke();
   }
 
-  for (let y = startY; y < window.innerHeight; y += gridSize) {
+  for (let y = startY; y < window.innerHeight; y += tileSize) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(window.innerWidth, y);
@@ -764,6 +774,7 @@ function initUi() {
 
 function init() {
   roomId = deriveRoomId();
+  getImage(WOOD_TILE_PATH);
   preloadSprites();
   resizeCanvas();
   setupKeyboard();
