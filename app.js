@@ -18,6 +18,7 @@ const PLAYER_SPEED = 170;
 const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
+const ASSET_REV = "20260307-2";
 
 const selectionScreen = document.getElementById("selection-screen");
 const gameScreen = document.getElementById("game-screen");
@@ -79,14 +80,15 @@ function setRoom(room) {
 }
 
 function getImage(path) {
-  if (imageCache.has(path)) {
-    return imageCache.get(path);
+  const key = `${path}?v=${ASSET_REV}`;
+  if (imageCache.has(key)) {
+    return imageCache.get(key);
   }
   const image = new Image();
-  image.src = path;
-  image.onerror = () => imageCache.set(path, null);
-  image.onload = () => imageCache.set(path, image);
-  imageCache.set(path, image);
+  image.src = key;
+  image.onerror = () => imageCache.set(key, null);
+  image.onload = () => imageCache.set(key, image);
+  imageCache.set(key, image);
   return image;
 }
 
