@@ -1,5 +1,6 @@
 import * as Y from "https://esm.sh/yjs@13.6.24";
 import { WebsocketProvider } from "https://esm.sh/y-websocket@1.5.4?deps=yjs@13.6.24";
+import { WebrtcProvider } from "https://esm.sh/y-webrtc@10.3.0?deps=yjs@13.6.24";
 
 const CHARACTER_DEFS = [
   { id: "raft", name: "RAFT" },
@@ -218,7 +219,8 @@ const uiState = {
 };
 const joystickState = { activePointerId: null };
 let doc;
-let provider;
+let wsProvider;
+let rtcProvider;
 let playersMap;
 let locksMap;
 let roomId = "";
@@ -228,6 +230,7 @@ let accumulator = 0;
 let lastMs = performance.now();
 let heartbeatTimer = 0;
 const cameraState = { x: 0, y: 0, initialized: false };
+const syncState = { ws: "connecting", rtc: "connecting" };
 const transparentSprite = document.createElement("canvas");
 transparentSprite.width = 32;
 transparentSprite.height = 32;
@@ -743,8 +746,10 @@ function drawSelectionUi() {
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillText(`ROOM ID: ${roomId}`, window.innerWidth / 2, 86);
-  const online = provider?.wsconnected ? "ONLINE" : "CONNECTING";
-  ctx.fillStyle = provider?.wsconnected ? "#7ef0a5" : "#ffd085";
+  const wsOnline = syncState.ws === "connected";
+  const rtcOnline = syncState.rtc === "connected" || (rtcProvider?.webrtcConns?.size || 0) > 0;
+  const online = wsOnline || rtcOnline ? "ONLINE" : "CONNECTING";
+  ctx.fillStyle = online === "ONLINE" ? "#7ef0a5" : "#ffd085";
   ctx.font = "bold 12px sans-serif";
   ctx.fillText(`SYNC: ${online}`, window.innerWidth / 2, 104);
   const copyRect = { x: Math.floor(window.innerWidth / 2 - 76), y: 106, w: 152, h: 22 };
@@ -1027,8 +1032,18 @@ function setupJoystick() {
 
 function setupSync() {
   doc = new Y.Doc();
-  provider = new WebsocketProvider("wss://demos.yjs.dev", roomId, doc, {
+  wsProvider = new WebsocketProvider("wss://demos.yjs.dev", roomId, doc, {
     connect: true,
+  });
+  rtcProvider = new WebrtcProvider(roomId, doc, {
+    maxConns: 30,
+    filterBcConns: false,
+  });
+  wsProvider.on("status", (event) => {
+    syncState.ws = event.status;
+  });
+  rtcProvider.on("status", (event) => {
+    syncState.rtc = event.status;
   });
   playersMap = doc.getMap("players");
   locksMap = doc.getMap("locks");
@@ -1047,7 +1062,8 @@ function setupSync() {
   window.addEventListener("beforeunload", () => {
     releaseMyLock();
     playersMap.delete(clientId);
-    provider?.destroy?.();
+    wsProvider?.destroy?.();
+    rtcProvider?.destroy?.();
   });
 }
 
