@@ -211,6 +211,7 @@ const imageCache = new Map();
 const uiState = {
   mode: "selection",
   selectionHitboxes: [],
+  selectionActions: [],
   hudHitboxes: [],
   toast: "",
   toastUntil: 0,
@@ -438,6 +439,14 @@ function setupCanvasUi() {
     const sy = (y * window.innerHeight) / canvas.clientHeight;
 
     if (uiState.mode === "selection") {
+      for (const action of uiState.selectionActions) {
+        if (pointInRect(sx, sy, action.rect)) {
+          if (action.action === "copy") {
+            copyInviteUrl();
+          }
+          return;
+        }
+      }
       if (uiState.selectionHitboxes.length === 0) {
         const { left, top, cols, cardW, cardH, gap } = getSelectionLayout();
         uiState.selectionHitboxes = CHARACTER_DEFS.map((def, index) => {
@@ -696,7 +705,7 @@ function getSelectionLayout() {
   const baseCardW = 150;
   const baseCardH = 188;
   const baseGap = 12;
-  const top = 108;
+  const top = 132;
   const maxColsByWidth = Math.max(1, Math.floor((window.innerWidth + baseGap) / (baseCardW + baseGap)));
   const cols = Math.max(1, Math.min(4, maxColsByWidth, CHARACTER_DEFS.length));
   const rows = Math.ceil(CHARACTER_DEFS.length / cols);
@@ -721,6 +730,7 @@ function getSelectionLayout() {
 
 function drawSelectionUi() {
   uiState.selectionHitboxes = [];
+  uiState.selectionActions = [];
   ctx.fillStyle = "rgba(15,18,15,0.58)";
   ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
@@ -728,6 +738,14 @@ function drawSelectionUi() {
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   drawFittedText("SEKECT PLAYER", window.innerWidth / 2, 16, window.innerWidth - 24, 72, 28, "#f2f7ef");
+  ctx.fillStyle = "#e8f0e3";
+  ctx.font = "bold 16px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(`ROOM ID: ${roomId}`, window.innerWidth / 2, 86);
+  const copyRect = { x: Math.floor(window.innerWidth / 2 - 76), y: 106, w: 152, h: 22 };
+  drawButton(copyRect, "COPY URL", "light");
+  uiState.selectionActions.push({ action: "copy", rect: copyRect });
 
   const { left, top, cols, scale, cardW, cardH, gap } = getSelectionLayout();
   const frame = Math.floor(animClock * 5) % 2 === 0 ? 1 : 2;
@@ -798,6 +816,20 @@ function drawSelectionUi() {
       drawButton(buttonRect, "PLAY", blocked ? "dark" : "light");
     }
   });
+}
+
+function ensureLocalCharacterOwnership() {
+  if (!localPlayer.characterId) {
+    return;
+  }
+  const lock = readValidLock(localPlayer.characterId);
+  if (lock && lock.clientId !== clientId) {
+    playersMap.delete(clientId);
+    localPlayer.characterId = null;
+    localPlayer.name = "";
+    setUiMode("selection");
+    showToast("そのキャラは他の人が使用中です");
+  }
 }
 
 function drawHudUi() {
@@ -1001,6 +1033,7 @@ function setupSync() {
   heartbeatTimer = window.setInterval(() => {
     cleanupStalePlayers();
     cleanupStaleLocks();
+    ensureLocalCharacterOwnership();
 
     if (localPlayer.characterId) {
       locksMap.set(localPlayer.characterId, { clientId, ts: nowMs() });
