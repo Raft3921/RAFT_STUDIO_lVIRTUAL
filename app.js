@@ -46,6 +46,7 @@ const localPlayer = {
 };
 
 const imageCache = new Map();
+const imageTransparencyCache = new Map();
 const cardViews = [];
 let doc;
 let provider;
@@ -90,6 +91,36 @@ function getImage(path) {
   return image;
 }
 
+function isImageTransparent(path, img) {
+  if (!img || !img.complete || img.naturalWidth <= 0) {
+    return false;
+  }
+  if (imageTransparencyCache.has(path)) {
+    return imageTransparencyCache.get(path);
+  }
+
+  const probe = document.createElement("canvas");
+  probe.width = img.naturalWidth;
+  probe.height = img.naturalHeight;
+  const pctx = probe.getContext("2d", { willReadFrequently: true });
+  if (!pctx) {
+    imageTransparencyCache.set(path, false);
+    return false;
+  }
+
+  pctx.drawImage(img, 0, 0);
+  const data = pctx.getImageData(0, 0, probe.width, probe.height).data;
+  let transparent = true;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] !== 0) {
+      transparent = false;
+      break;
+    }
+  }
+  imageTransparencyCache.set(path, transparent);
+  return transparent;
+}
+
 function getSpriteImage(characterId, dir, moving, frame) {
   const base = `./assets/player/${characterId}`;
   const frameSafe = frame === 2 ? 2 : 1;
@@ -100,23 +131,41 @@ function getSpriteImage(characterId, dir, moving, frame) {
   if (moving) {
     if (runToken) {
       candidates.push(`${base}/${dirToken}_${runToken}.png`);
+      if (dirToken === "side") {
+        candidates.push(`${base}/front_${runToken}.png`);
+        candidates.push(`${base}/back_${runToken}.png`);
+      }
     } else {
       candidates.push(`${base}/${dirToken}_idle1.png`);
+      if (dirToken === "side") {
+        candidates.push(`${base}/front_idle1.png`);
+        candidates.push(`${base}/back_idle1.png`);
+      }
     }
   } else {
     candidates.push(`${base}/${dirToken}_idle${frameSafe}.png`);
+    if (dirToken === "side") {
+      candidates.push(`${base}/front_idle${frameSafe}.png`);
+      candidates.push(`${base}/back_idle${frameSafe}.png`);
+    }
   }
 
+  let loadedFallback = null;
   for (const path of candidates) {
     const img = getImage(path);
     if (img && img.complete && img.naturalWidth > 0) {
-      return img;
+      if (!isImageTransparent(path, img)) {
+        return img;
+      }
+      if (!loadedFallback) {
+        loadedFallback = img;
+      }
     }
     if (img === null) {
       continue;
     }
   }
-  return null;
+  return loadedFallback;
 }
 
 function nowMs() {
