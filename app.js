@@ -793,9 +793,9 @@ function drawSelectionUi() {
       ctx.font = `bold ${Math.max(11, Math.floor(14 * scale))}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("このキャラで参加", buttonRect.x + buttonRect.w / 2, buttonRect.y + buttonRect.h / 2 + 1);
+      ctx.fillText("PLAY", buttonRect.x + buttonRect.w / 2, buttonRect.y + buttonRect.h / 2 + 1);
     } else {
-      drawButton(buttonRect, "このキャラで参加", blocked ? "dark" : "light");
+      drawButton(buttonRect, "PLAY", blocked ? "dark" : "light");
     }
   });
 }
