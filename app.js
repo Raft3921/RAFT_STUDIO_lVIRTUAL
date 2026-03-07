@@ -469,6 +469,7 @@ function resizeCanvas() {
   canvas.width = Math.floor(window.innerWidth * dpr);
   canvas.height = Math.floor(window.innerHeight * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
 }
 
 function axisFromInput() {
@@ -636,6 +637,7 @@ function drawBackground(cameraX, cameraY, zoom) {
 }
 
 function render() {
+  ctx.imageSmoothingEnabled = false;
   cleanupStalePlayers();
 
   const cameraX = cameraState.x;

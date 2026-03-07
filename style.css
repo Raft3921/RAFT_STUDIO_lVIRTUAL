@@ -168,6 +168,12 @@ body {
   height: 100dvh;
   display: block;
   background: #dde6d6;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+img {
+  image-rendering: pixelated;
 }
 
 .hud {
