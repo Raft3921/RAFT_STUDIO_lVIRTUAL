@@ -37,6 +37,9 @@ const PLAYER_DECEL = 900;
 const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
+const NETWORK_SYNC_INTERVAL_MS = 80;
+const REMOTE_SMOOTH_RATE = 10;
+const REMOTE_SNAP_DISTANCE = 220;
 const ASSET_REV = `${Date.now()}`;
 const WOOD_TILE_PATH = "./assets/tile/wood.png";
 const PLAYER_SELECT_FRAME_PATH = "./assets/ui/player_select.png";
@@ -250,8 +253,10 @@ let localLockRef = null;
 let roomBasePath = "";
 let stopPlayersSync = null;
 let stopLocksSync = null;
+let lastNetworkSyncAt = 0;
 const cameraState = { x: 0, y: 0, initialized: false };
 const syncState = { rtc: "connecting" };
+const remoteVisuals = new Map();
 const transparentSprite = document.createElement("canvas");
 transparentSprite.width = 32;
 transparentSprite.height = 32;
@@ -345,10 +350,11 @@ function cleanupStaleLocks() {
   });
 }
 
-function upsertLocalPlayer() {
+function upsertLocalPlayer(forceNetwork = false) {
   if (!localPlayer.characterId) {
     return;
   }
+  const now = nowMs();
   const payload = {
     x: localPlayer.x,
     y: localPlayer.y,
@@ -361,7 +367,8 @@ function upsertLocalPlayer() {
     lastSeen: nowMs(),
   };
   playersMap.set(clientId, payload);
-  if (localPlayerRef) {
+  if (localPlayerRef && (forceNetwork || now - lastNetworkSyncAt >= NETWORK_SYNC_INTERVAL_MS)) {
+    lastNetworkSyncAt = now;
     set(localPlayerRef, payload).catch(() => {
       syncState.rtc = "disconnected";
     });
@@ -418,7 +425,7 @@ function acquireCharacter(characterId) {
     });
     onDisconnect(localLockRef).remove().catch(() => {});
   }
-  upsertLocalPlayer();
+  upsertLocalPlayer(true);
   setUiMode("game");
   requestGameFullscreen();
   return true;
@@ -976,6 +983,43 @@ function drawToast() {
   ctx.fillText(uiState.toast, x + w / 2, y + h / 2);
 }
 
+function updateRemoteVisuals(dt) {
+  const alpha = 1 - Math.exp(-REMOTE_SMOOTH_RATE * dt);
+  const activeRemoteIds = new Set();
+
+  playersMap.forEach((player, id) => {
+    if (id === clientId || !player?.characterId) {
+      return;
+    }
+
+    activeRemoteIds.add(id);
+    const targetX = Number(player.x) || 0;
+    const targetY = Number(player.y) || 0;
+    const current = remoteVisuals.get(id);
+
+    if (!current) {
+      remoteVisuals.set(id, { x: targetX, y: targetY });
+      return;
+    }
+
+    const dist = Math.hypot(targetX - current.x, targetY - current.y);
+    if (dist > REMOTE_SNAP_DISTANCE) {
+      current.x = targetX;
+      current.y = targetY;
+      return;
+    }
+
+    current.x += (targetX - current.x) * alpha;
+    current.y += (targetY - current.y) * alpha;
+  });
+
+  for (const id of remoteVisuals.keys()) {
+    if (!activeRemoteIds.has(id)) {
+      remoteVisuals.delete(id);
+    }
+  }
+}
+
 function render() {
   ctx.imageSmoothingEnabled = false;
   cleanupStalePlayers();
@@ -986,11 +1030,24 @@ function render() {
   drawBackground(cameraX, cameraY, CAMERA_ZOOM);
 
   const players = [];
-  playersMap.forEach((player) => {
+  playersMap.forEach((player, id) => {
     if (!player?.characterId) {
       return;
     }
-    players.push(player);
+    if (id === clientId) {
+      players.push(player);
+      return;
+    }
+    const visual = remoteVisuals.get(id);
+    if (!visual) {
+      players.push(player);
+      return;
+    }
+    players.push({
+      ...player,
+      x: visual.x,
+      y: visual.y,
+    });
   });
 
   players.sort((a, b) => a.y - b.y);
@@ -1014,6 +1071,7 @@ function frameLoop(ts) {
   while (accumulator >= STEP_SEC) {
     updateSimulation(STEP_SEC);
     updateCamera(STEP_SEC);
+    updateRemoteVisuals(STEP_SEC);
     animClock += STEP_SEC;
     accumulator -= STEP_SEC;
   }
@@ -1206,7 +1264,7 @@ function setupSync() {
           syncState.rtc = "disconnected";
         });
       }
-      upsertLocalPlayer();
+      upsertLocalPlayer(true);
     }
   }, 900);
 
