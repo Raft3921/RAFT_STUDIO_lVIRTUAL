@@ -22,7 +22,7 @@ const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
 const ASSET_REV = `${Date.now()}`;
 const WOOD_TILE_PATH = "./assets/tile/wood.png";
-const CAMERA_ZOOM = 1.6;
+const CAMERA_ZOOM = 2;
 const CAMERA_FOLLOW_RATE = 7.5;
 const SPRITE_PATHS = {
   raft: {
@@ -571,8 +571,8 @@ function drawPlaceholder(x, y) {
 }
 
 function drawActor(player, cameraX, cameraY, zoom) {
-  const screenX = (player.x - cameraX) * zoom;
-  const screenY = (player.y - cameraY) * zoom;
+  const screenX = Math.round((player.x - cameraX) * zoom);
+  const screenY = Math.round((player.y - cameraY) * zoom);
   const frame = player.moving
     ? [3, 1, 4, 1][Math.floor(animClock * 10) % 4]
     : Math.floor(animClock * 5) % 2 === 0
@@ -580,7 +580,7 @@ function drawActor(player, cameraX, cameraY, zoom) {
       : 2;
   const sprite = getSpriteImage(player.characterId, player.dir, player.moving, frame);
   const drawable = sprite && sprite.complete && sprite.naturalWidth > 0 ? sprite : transparentSprite;
-  const spriteSize = 64 * zoom;
+  const spriteSize = Math.round(64 * zoom);
   const spriteHalf = spriteSize / 2;
 
   ctx.fillStyle = "rgba(0,0,0,0.18)";
@@ -590,7 +590,7 @@ function drawActor(player, cameraX, cameraY, zoom) {
 
   ctx.save();
   if (player.dir === "right") {
-    ctx.translate(screenX + spriteHalf, screenY - spriteHalf);
+    ctx.translate(Math.round(screenX + spriteHalf), Math.round(screenY - spriteHalf));
     ctx.scale(-1, 1);
     ctx.drawImage(drawable, 0, 0, spriteSize, spriteSize);
   } else {
@@ -621,8 +621,8 @@ function drawBackground(cameraX, cameraY, zoom) {
   if (wood && wood.complete && wood.naturalWidth > 0) {
     for (let wy = startWY; wy < endWY; wy += tileSize) {
       for (let wx = startWX; wx < endWX; wx += tileSize) {
-        const sx = (wx - cameraX) * zoom;
-        const sy = (wy - cameraY) * zoom;
+        const sx = Math.round((wx - cameraX) * zoom);
+        const sy = Math.round((wy - cameraY) * zoom);
         ctx.drawImage(wood, sx, sy, tileScreen, tileScreen);
       }
     }
@@ -631,7 +631,7 @@ function drawBackground(cameraX, cameraY, zoom) {
   ctx.strokeStyle = "rgba(80,54,24,0.15)";
   ctx.lineWidth = 1;
   for (let wx = startWX; wx < endWX; wx += tileSize) {
-    const x = (wx - cameraX) * zoom;
+    const x = Math.round((wx - cameraX) * zoom);
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, window.innerHeight);
@@ -639,7 +639,7 @@ function drawBackground(cameraX, cameraY, zoom) {
   }
 
   for (let wy = startWY; wy < endWY; wy += tileSize) {
-    const y = (wy - cameraY) * zoom;
+    const y = Math.round((wy - cameraY) * zoom);
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(window.innerWidth, y);
@@ -793,8 +793,8 @@ function render() {
   ctx.imageSmoothingEnabled = false;
   cleanupStalePlayers();
 
-  const cameraX = cameraState.x;
-  const cameraY = cameraState.y;
+  const cameraX = Math.round(cameraState.x * CAMERA_ZOOM) / CAMERA_ZOOM;
+  const cameraY = Math.round(cameraState.y * CAMERA_ZOOM) / CAMERA_ZOOM;
 
   drawBackground(cameraX, cameraY, CAMERA_ZOOM);
 
