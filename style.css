@@ -1,0 +1,242 @@
+:root {
+  --bg: #f1f3ee;
+  --panel: #f9f8f3;
+  --ink: #1f2a21;
+  --accent: #15705b;
+  --danger: #b64646;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  background: radial-gradient(circle at top, #ffffff 10%, var(--bg) 70%);
+  color: var(--ink);
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+#app {
+  width: 100%;
+  min-height: 100%;
+}
+
+.screen {
+  display: block;
+  width: 100%;
+  min-height: 100dvh;
+  padding: 0;
+}
+
+.screen.active {
+  display: block;
+}
+
+.selection-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  overflow: auto;
+  padding: 12px;
+  background: linear-gradient(180deg, rgba(245, 248, 240, 0.95), rgba(238, 242, 234, 0.95));
+  backdrop-filter: blur(4px);
+}
+
+.selection-overlay:not(.active) {
+  display: none;
+}
+
+.panel-header h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 2.8vw, 2rem);
+}
+
+.panel-header p {
+  margin: 6px 0 14px;
+  font-size: 0.95rem;
+}
+
+.room-row {
+  display: grid;
+  grid-template-columns: 60px minmax(120px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.room-row input,
+.room-row button,
+.card-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #93a093;
+  background: linear-gradient(180deg, #fefefe 0%, #eef5ee 100%);
+  border-radius: 10px;
+  padding: 8px;
+  font-size: 0.9rem;
+  color: var(--ink);
+  outline: none;
+  box-shadow: 0 2px 0 rgba(31, 42, 33, 0.16);
+}
+
+.room-row button,
+.card-select,
+#change-character-btn {
+  cursor: pointer;
+}
+
+.room-row button:active,
+.card-select:active,
+#change-character-btn:active {
+  transform: translateY(1px);
+}
+
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.character-card {
+  background: var(--panel);
+  border: 1px solid #ced7ca;
+  border-radius: 14px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.character-preview {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f0efe9 0%, #ecefe2 100%);
+  border: 1px dashed #aeb4a4;
+  display: grid;
+  place-items: center;
+}
+
+.character-preview img {
+  image-rendering: pixelated;
+  width: 64px;
+  height: 64px;
+}
+
+.placeholder {
+  font-size: 0.75rem;
+  color: #6f756a;
+}
+
+.character-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.status {
+  margin: 0;
+  font-size: 0.8rem;
+  min-height: 1.2em;
+}
+
+.status.busy {
+  color: var(--danger);
+}
+
+.status.free {
+  color: var(--accent);
+}
+
+.card-select[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#game-screen {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+#game-canvas {
+  width: 100vw;
+  height: 100dvh;
+  display: block;
+  background: #dde6d6;
+}
+
+.hud {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+
+#player-label,
+#change-character-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 12px;
+  padding: 7px 10px;
+  border: 1px solid #abb8a8;
+  box-shadow: 0 2px 0 rgba(31, 42, 33, 0.16);
+}
+
+#change-character-btn {
+  pointer-events: auto;
+  font-size: 0.85rem;
+}
+
+.joystick {
+  position: fixed;
+  left: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: 130px;
+  height: 130px;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.joystick-base {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px solid rgba(55, 73, 57, 0.5);
+  background: rgba(247, 251, 245, 0.28);
+}
+
+.joystick-knob {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(36, 102, 77, 0.77);
+  border: 1px solid rgba(14, 68, 57, 0.74);
+  transform: translate(0, 0);
+}
+
+@media (max-width: 680px) {
+  .room-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .room-row label {
+    grid-column: 1 / -1;
+  }
+
+  .room-row input {
+    grid-column: 1 / -1;
+  }
+}
