@@ -18,7 +18,7 @@ const PLAYER_SPEED = 170;
 const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
-const ASSET_REV = "20260307-2";
+const ASSET_REV = `${Date.now()}`;
 
 const selectionScreen = document.getElementById("selection-screen");
 const gameScreen = document.getElementById("game-screen");
@@ -81,12 +81,16 @@ function setRoom(room) {
 
 function getImage(path) {
   const key = `${path}?v=${ASSET_REV}`;
-  if (imageCache.has(key)) {
-    return imageCache.get(key);
+  const cached = imageCache.get(key);
+  if (cached !== undefined) {
+    return cached;
   }
   const image = new Image();
   image.src = key;
-  image.onerror = () => imageCache.set(key, null);
+  image.onerror = () => {
+    // Do not pin failures forever. Retry on next frame in case CDN cache/deploy lag.
+    imageCache.delete(key);
+  };
   image.onload = () => imageCache.set(key, image);
   imageCache.set(key, image);
   return image;
