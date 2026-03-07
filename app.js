@@ -23,6 +23,7 @@ const STEP_SEC = 1 / 60;
 const ASSET_REV = `${Date.now()}`;
 const WOOD_TILE_PATH = "./assets/tile/wood.png";
 const PLAYER_SELECT_FRAME_PATH = "./assets/ui/player_select.png";
+const KYARA_SELECT_BUTTON_PATH = "./assets/ui/kyara_select.png";
 const CAMERA_ZOOM = 2;
 const CAMERA_FOLLOW_RATE = 7.5;
 const SPRITE_PATHS = {
@@ -281,6 +282,7 @@ function preloadSprites() {
     }
   }
   getImage(PLAYER_SELECT_FRAME_PATH);
+  getImage(KYARA_SELECT_BUTTON_PATH);
 }
 
 function nowMs() {
@@ -741,16 +743,27 @@ function drawSelectionUi() {
     ctx.fillStyle = blocked ? "#ffd4d4" : "#1b6c58";
     ctx.fillText(blocked ? `使用中: ${occupantName(lock)}` : "選択できます", x + cardW / 2, y + Math.floor(124 * scale));
 
-    drawButton(
-      {
-        x: x + Math.floor(12 * scale),
-        y: y + Math.floor(148 * scale),
-        w: cardW - Math.floor(24 * scale),
-        h: Math.floor(30 * scale),
-      },
-      blocked ? "使用中" : "このキャラで参加",
-      blocked ? "dark" : "light",
-    );
+    const buttonRect = {
+      x: x + Math.floor(12 * scale),
+      y: y + Math.floor(148 * scale),
+      w: cardW - Math.floor(24 * scale),
+      h: Math.floor(30 * scale),
+    };
+    const selectBtn = getImage(KYARA_SELECT_BUTTON_PATH);
+    if (selectBtn && selectBtn.complete && selectBtn.naturalWidth > 0) {
+      ctx.drawImage(selectBtn, buttonRect.x, buttonRect.y, buttonRect.w, buttonRect.h);
+      if (blocked) {
+        ctx.fillStyle = "rgba(45,10,10,0.45)";
+        ctx.fillRect(buttonRect.x, buttonRect.y, buttonRect.w, buttonRect.h);
+      }
+      ctx.fillStyle = blocked ? "#ffd9d9" : "#102015";
+      ctx.font = `bold ${Math.max(11, Math.floor(13 * scale))}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(blocked ? "使用中" : "このキャラで参加", buttonRect.x + buttonRect.w / 2, buttonRect.y + buttonRect.h / 2 + 1);
+    } else {
+      drawButton(buttonRect, blocked ? "使用中" : "このキャラで参加", blocked ? "dark" : "light");
+    }
   });
 }
 
