@@ -2,14 +2,14 @@ import * as Y from "https://esm.sh/yjs@13.6.24";
 import { WebrtcProvider } from "https://esm.sh/y-webrtc@10.3.0?deps=yjs@13.6.24";
 
 const CHARACTER_DEFS = [
-  { id: "raft", name: "ラフト" },
-  { id: "mai", name: "まい" },
-  { id: "yansan", name: "やんさん" },
-  { id: "tanutsuna", name: "たぬつな" },
-  { id: "muto", name: "ムート" },
-  { id: "moron", name: "もろん" },
-  { id: "week", name: "ウィーク" },
-  { id: "gyoza", name: "ギョーザ" },
+  { id: "raft", name: "RAFT" },
+  { id: "mai", name: "MAI" },
+  { id: "tanutsuna", name: "TANUTSUNA" },
+  { id: "yansan", name: "YANSAN" },
+  { id: "muto", name: "MUTO" },
+  { id: "moron", name: "MORON" },
+  { id: "week", name: "WEEK" },
+  { id: "gyoza", name: "GYOZA" },
 ];
 
 const WORLD_WIDTH = 4800;
@@ -668,21 +668,26 @@ function getSelectionLayout() {
   const baseCardW = 150;
   const baseCardH = 188;
   const baseGap = 12;
-  const left = 20;
-  const top = 112;
-  const cols = Math.max(1, Math.floor((window.innerWidth - left * 2 + baseGap) / (baseCardW + baseGap)));
+  const top = 122;
+  const maxColsByWidth = Math.max(1, Math.floor((window.innerWidth + baseGap) / (baseCardW + baseGap)));
+  const cols = Math.max(1, Math.min(4, maxColsByWidth, CHARACTER_DEFS.length));
   const rows = Math.ceil(CHARACTER_DEFS.length / cols);
-  const fitW = (window.innerWidth - left * 2 - baseGap * (cols - 1)) / (cols * baseCardW);
+  const fitW = (window.innerWidth - baseGap * (cols - 1) - 20) / (cols * baseCardW);
   const fitH = (window.innerHeight - top - 24 - baseGap * (rows - 1)) / (rows * baseCardH);
   const scale = Math.max(0.58, Math.min(1, fitW, fitH));
+  const cardW = Math.floor(baseCardW * scale);
+  const cardH = Math.floor(baseCardH * scale);
+  const gap = Math.floor(baseGap * scale);
+  const totalW = cols * cardW + (cols - 1) * gap;
+  const left = Math.floor((window.innerWidth - totalW) / 2);
   return {
     left,
     top,
     cols,
     scale,
-    cardW: Math.floor(baseCardW * scale),
-    cardH: Math.floor(baseCardH * scale),
-    gap: Math.floor(baseGap * scale),
+    cardW,
+    cardH,
+    gap,
   };
 }
 
@@ -692,13 +697,10 @@ function drawSelectionUi() {
   ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
   ctx.fillStyle = "#f2f7ef";
-  ctx.font = "bold 28px sans-serif";
-  ctx.textAlign = "left";
+  ctx.font = "bold 52px sans-serif";
+  ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.fillText("キャラクターを選択", 20, 18);
-  ctx.font = "14px sans-serif";
-  ctx.fillText(`部屋: ${roomId}`, 20, 56);
-  ctx.fillText("同じキャラは1人のみ。使用中キャラは選択できません。", 20, 78);
+  ctx.fillText("SEKECT PLAYER", window.innerWidth / 2, 16);
 
   const { left, top, cols, scale, cardW, cardH, gap } = getSelectionLayout();
   const frame = Math.floor(animClock * 5) % 2 === 0 ? 1 : 2;
@@ -737,11 +739,17 @@ function drawSelectionUi() {
     ctx.font = `bold ${Math.max(14, Math.floor(20 * scale))}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
+    const statusSize = Math.max(8, Math.floor(10 * scale));
+    const statusGap = Math.max(6, Math.floor(8 * scale));
+    const nameY = y + Math.floor(94 * scale);
+    const nameWidth = ctx.measureText(def.name).width;
+    const groupW = statusSize + statusGap + nameWidth;
+    const gx = x + (cardW - groupW) / 2;
+    const sy = nameY + Math.max(2, Math.floor(6 * scale));
+    ctx.fillStyle = blocked ? "#b64646" : "#2a9b55";
+    ctx.fillRect(Math.floor(gx), Math.floor(sy), statusSize, statusSize);
+    ctx.fillStyle = blocked ? "#ffe6e6" : "#1f2a21";
     ctx.fillText(def.name, x + cardW / 2, y + Math.floor(94 * scale));
-
-    ctx.font = `${Math.max(10, Math.floor(12 * scale))}px sans-serif`;
-    ctx.fillStyle = blocked ? "#ffd4d4" : "#1b6c58";
-    ctx.fillText(blocked ? `使用中: ${occupantName(lock)}` : "選択できます", x + cardW / 2, y + Math.floor(124 * scale));
 
     const buttonRect = {
       x: x + Math.floor(12 * scale),
@@ -760,9 +768,9 @@ function drawSelectionUi() {
       ctx.font = `bold ${Math.max(11, Math.floor(13 * scale))}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(blocked ? "使用中" : "このキャラで参加", buttonRect.x + buttonRect.w / 2, buttonRect.y + buttonRect.h / 2 + 1);
+      ctx.fillText("このキャラで参加", buttonRect.x + buttonRect.w / 2, buttonRect.y + buttonRect.h / 2 + 1);
     } else {
-      drawButton(buttonRect, blocked ? "使用中" : "このキャラで参加", blocked ? "dark" : "light");
+      drawButton(buttonRect, "このキャラで参加", blocked ? "dark" : "light");
     }
   });
 }
