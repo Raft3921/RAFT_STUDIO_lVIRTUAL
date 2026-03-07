@@ -215,6 +215,7 @@ const uiState = {
   toast: "",
   toastUntil: 0,
 };
+const joystickState = { activePointerId: null };
 let doc;
 let provider;
 let playersMap;
@@ -368,6 +369,7 @@ function acquireCharacter(characterId) {
   locksMap.set(characterId, { clientId, ts: nowMs() });
   upsertLocalPlayer();
   setUiMode("game");
+  requestGameFullscreen();
   return true;
 }
 
@@ -396,6 +398,19 @@ function setUiMode(mode) {
     inputState.joyX = 0;
     inputState.joyY = 0;
     joystickKnob.style.transform = "translate(0px, 0px)";
+  }
+}
+
+async function requestGameFullscreen() {
+  if (uiState.mode !== "game") return;
+  if (document.fullscreenElement) return;
+  try {
+    const target = document.documentElement;
+    if (target.requestFullscreen) {
+      await target.requestFullscreen({ navigationUI: "hide" });
+    }
+  } catch {
+    // Ignore; fullscreen availability depends on browser and gesture policies.
   }
 }
 
@@ -664,17 +679,30 @@ function drawButton(rect, label, tone = "light") {
   ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
 }
 
+function drawFittedText(text, centerX, topY, maxWidth, maxSize = 20, minSize = 11, color = "#1f2a21") {
+  let size = maxSize;
+  for (; size >= minSize; size--) {
+    ctx.font = `bold ${size}px sans-serif`;
+    if (ctx.measureText(text).width <= maxWidth) break;
+  }
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(text, centerX, topY);
+  return size;
+}
+
 function getSelectionLayout() {
   const baseCardW = 150;
   const baseCardH = 188;
   const baseGap = 12;
-  const top = 122;
+  const top = 108;
   const maxColsByWidth = Math.max(1, Math.floor((window.innerWidth + baseGap) / (baseCardW + baseGap)));
   const cols = Math.max(1, Math.min(4, maxColsByWidth, CHARACTER_DEFS.length));
   const rows = Math.ceil(CHARACTER_DEFS.length / cols);
   const fitW = (window.innerWidth - baseGap * (cols - 1) - 20) / (cols * baseCardW);
   const fitH = (window.innerHeight - top - 24 - baseGap * (rows - 1)) / (rows * baseCardH);
-  const scale = Math.max(0.58, Math.min(1, fitW, fitH));
+  const scale = Math.max(0.56, Math.min(1, fitW, fitH));
   const cardW = Math.floor(baseCardW * scale);
   const cardH = Math.floor(baseCardH * scale);
   const gap = Math.floor(baseGap * scale);
@@ -697,10 +725,9 @@ function drawSelectionUi() {
   ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
   ctx.fillStyle = "#f2f7ef";
-  ctx.font = "bold 52px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.fillText("SEKECT PLAYER", window.innerWidth / 2, 16);
+  drawFittedText("SEKECT PLAYER", window.innerWidth / 2, 16, window.innerWidth - 24, 72, 28, "#f2f7ef");
 
   const { left, top, cols, scale, cardW, cardH, gap } = getSelectionLayout();
   const frame = Math.floor(animClock * 5) % 2 === 0 ? 1 : 2;
@@ -736,20 +763,18 @@ function drawSelectionUi() {
     ctx.drawImage(drawable, x + cardW / 2 - avatar / 2, y + Math.floor(18 * scale), avatar, avatar);
 
     ctx.fillStyle = blocked ? "#ffe6e6" : "#1f2a21";
-    ctx.font = `bold ${Math.max(14, Math.floor(20 * scale))}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
     const statusSize = Math.max(8, Math.floor(10 * scale));
     const statusGap = Math.max(6, Math.floor(8 * scale));
     const nameY = y + Math.floor(94 * scale);
+    const nameFont = Math.max(11, Math.floor(20 * scale));
+    ctx.font = `bold ${nameFont}px sans-serif`;
     const nameWidth = ctx.measureText(def.name).width;
     const groupW = statusSize + statusGap + nameWidth;
     const gx = x + (cardW - groupW) / 2;
     const sy = nameY + Math.max(2, Math.floor(6 * scale));
     ctx.fillStyle = blocked ? "#b64646" : "#2a9b55";
     ctx.fillRect(Math.floor(gx), Math.floor(sy), statusSize, statusSize);
-    ctx.fillStyle = blocked ? "#ffe6e6" : "#1f2a21";
-    ctx.fillText(def.name, x + cardW / 2, y + Math.floor(94 * scale));
+    drawFittedText(def.name, x + cardW / 2, nameY, cardW - 24, nameFont, Math.max(10, Math.floor(12 * scale)), blocked ? "#ffe6e6" : "#1f2a21");
 
     const buttonRect = {
       x: x + Math.floor(12 * scale),
@@ -765,7 +790,7 @@ function drawSelectionUi() {
         ctx.fillRect(buttonRect.x, buttonRect.y, buttonRect.w, buttonRect.h);
       }
       ctx.fillStyle = blocked ? "#ffd9d9" : "#102015";
-      ctx.font = `bold ${Math.max(11, Math.floor(13 * scale))}px sans-serif`;
+      ctx.font = `bold ${Math.max(11, Math.floor(14 * scale))}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("このキャラで参加", buttonRect.x + buttonRect.w / 2, buttonRect.y + buttonRect.h / 2 + 1);
@@ -791,15 +816,7 @@ function drawHudUi() {
   ctx.textBaseline = "middle";
   ctx.fillText(label, panel.x + 12, panel.y + panel.h / 2);
 
-  const backRect = { x: panel.x + panel.w - 170, y: panel.y + 6, w: 158, h: 32 };
-  drawButton(backRect, "キャラ選択へ戻る", "light");
-  uiState.hudHitboxes.push({ action: "back", rect: backRect });
-
-  const copyRect = { x: panel.x + panel.w + 8, y: panel.y + 6, w: 110, h: 32 };
-  if (copyRect.x + copyRect.w <= window.innerWidth - 12) {
-    drawButton(copyRect, "招待URLコピー", "light");
-    uiState.hudHitboxes.push({ action: "copy", rect: copyRect });
-  }
+  // Play mode is locked to movement only; no extra HUD actions.
 }
 
 function drawToast() {
@@ -930,21 +947,46 @@ function setupJoystick() {
   }
 
   joystick.addEventListener("pointerdown", (e) => {
+    joystickState.activePointerId = e.pointerId;
     joystick.setPointerCapture(e.pointerId);
     updateKnob(e.clientX, e.clientY);
     e.preventDefault();
   });
 
   joystick.addEventListener("pointermove", (e) => {
-    if ((e.buttons & 1) !== 1 && e.pressure === 0) {
+    if (joystickState.activePointerId !== e.pointerId) {
       return;
     }
     updateKnob(e.clientX, e.clientY);
     e.preventDefault();
   });
 
-  joystick.addEventListener("pointerup", reset);
-  joystick.addEventListener("pointercancel", reset);
+  joystick.addEventListener("pointerup", (e) => {
+    if (joystickState.activePointerId === e.pointerId) {
+      joystickState.activePointerId = null;
+      reset();
+    }
+  });
+  joystick.addEventListener("pointercancel", (e) => {
+    if (joystickState.activePointerId === e.pointerId) {
+      joystickState.activePointerId = null;
+      reset();
+    }
+  });
+  joystick.addEventListener("lostpointercapture", () => {
+    joystickState.activePointerId = null;
+    reset();
+  });
+  window.addEventListener("blur", () => {
+    joystickState.activePointerId = null;
+    reset();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      joystickState.activePointerId = null;
+      reset();
+    }
+  });
 }
 
 function setupSync() {
@@ -989,6 +1031,12 @@ function init() {
   accumulator = 0;
   rafId = requestAnimationFrame(frameLoop);
 }
+
+document.addEventListener("fullscreenchange", () => {
+  if (uiState.mode === "game" && !document.fullscreenElement) {
+    showToast("プレイ中は全画面です");
+  }
+});
 
 window.render_game_to_text = () => {
   cleanupStalePlayers();
