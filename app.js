@@ -19,6 +19,168 @@ const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
 const ASSET_REV = `${Date.now()}`;
+const SPRITE_PATHS = {
+  raft: {
+    front: {
+      idle1: "./assets/player/raft/front_idle1.png",
+      idle2: "./assets/player/raft/front_idle2.png",
+      run1: "./assets/player/raft/front_run1.png",
+      run2: "./assets/player/raft/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/raft/back_idle1.png",
+      idle2: "./assets/player/raft/back_idle2.png",
+      run1: "./assets/player/raft/back_run1.png",
+      run2: "./assets/player/raft/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/raft/side_idle1.png",
+      idle2: "./assets/player/raft/side_idle2.png",
+      run1: "./assets/player/raft/side_run1.png",
+      run2: "./assets/player/raft/side_run2.png",
+    },
+  },
+  mai: {
+    front: {
+      idle1: "./assets/player/mai/front_idle1.png",
+      idle2: "./assets/player/mai/front_idle2.png",
+      run1: "./assets/player/mai/front_run1.png",
+      run2: "./assets/player/mai/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/mai/back_idle1.png",
+      idle2: "./assets/player/mai/back_idle2.png",
+      run1: "./assets/player/mai/back_run1.png",
+      run2: "./assets/player/mai/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/mai/side_idle1.png",
+      idle2: "./assets/player/mai/side_idle2.png",
+      run1: "./assets/player/mai/side_run1.png",
+      run2: "./assets/player/mai/side_run2.png",
+    },
+  },
+  yansan: {
+    front: {
+      idle1: "./assets/player/yansan/front_idle1.png",
+      idle2: "./assets/player/yansan/front_idle2.png",
+      run1: "./assets/player/yansan/front_run1.png",
+      run2: "./assets/player/yansan/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/yansan/back_idle1.png",
+      idle2: "./assets/player/yansan/back_idle2.png",
+      run1: "./assets/player/yansan/back_run1.png",
+      run2: "./assets/player/yansan/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/yansan/side_idle1.png",
+      idle2: "./assets/player/yansan/side_idle2.png",
+      run1: "./assets/player/yansan/side_run1.png",
+      run2: "./assets/player/yansan/side_run2.png",
+    },
+  },
+  tanutsuna: {
+    front: {
+      idle1: "./assets/player/tanutsuna/front_idle1.png",
+      idle2: "./assets/player/tanutsuna/front_idle2.png",
+      run1: "./assets/player/tanutsuna/front_run1.png",
+      run2: "./assets/player/tanutsuna/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/tanutsuna/back_idle1.png",
+      idle2: "./assets/player/tanutsuna/back_idle2.png",
+      run1: "./assets/player/tanutsuna/back_run1.png",
+      run2: "./assets/player/tanutsuna/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/tanutsuna/side_idle1.png",
+      idle2: "./assets/player/tanutsuna/side_idle2.png",
+      run1: "./assets/player/tanutsuna/side_run1.png",
+      run2: "./assets/player/tanutsuna/side_run2.png",
+    },
+  },
+  muto: {
+    front: {
+      idle1: "./assets/player/muto/front_idle1.png",
+      idle2: "./assets/player/muto/front_idle2.png",
+      run1: "./assets/player/muto/front_run1.png",
+      run2: "./assets/player/muto/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/muto/back_idle1.png",
+      idle2: "./assets/player/muto/back_idle2.png",
+      run1: "./assets/player/muto/back_run1.png",
+      run2: "./assets/player/muto/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/muto/side_idle1.png",
+      idle2: "./assets/player/muto/side_idle2.png",
+      run1: "./assets/player/muto/side_run1.png",
+      run2: "./assets/player/muto/side_run2.png",
+    },
+  },
+  moron: {
+    front: {
+      idle1: "./assets/player/moron/front_idle1.png",
+      idle2: "./assets/player/moron/front_idle2.png",
+      run1: "./assets/player/moron/front_run1.png",
+      run2: "./assets/player/moron/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/moron/back_idle1.png",
+      idle2: "./assets/player/moron/back_idle2.png",
+      run1: "./assets/player/moron/back_run1.png",
+      run2: "./assets/player/moron/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/moron/side_idle1.png",
+      idle2: "./assets/player/moron/side_idle2.png",
+      run1: "./assets/player/moron/side_run1.png",
+      run2: "./assets/player/moron/side_run2.png",
+    },
+  },
+  week: {
+    front: {
+      idle1: "./assets/player/week/front_idle1.png",
+      idle2: "./assets/player/week/front_idle2.png",
+      run1: "./assets/player/week/front_run1.png",
+      run2: "./assets/player/week/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/week/back_idle1.png",
+      idle2: "./assets/player/week/back_idle2.png",
+      run1: "./assets/player/week/back_run1.png",
+      run2: "./assets/player/week/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/week/side_idle1.png",
+      idle2: "./assets/player/week/side_idle2.png",
+      run1: "./assets/player/week/side_run1.png",
+      run2: "./assets/player/week/side_run2.png",
+    },
+  },
+  gyoza: {
+    front: {
+      idle1: "./assets/player/gyoza/front_idle1.png",
+      idle2: "./assets/player/gyoza/front_idle2.png",
+      run1: "./assets/player/gyoza/front_run1.png",
+      run2: "./assets/player/gyoza/front_run2.png",
+    },
+    back: {
+      idle1: "./assets/player/gyoza/back_idle1.png",
+      idle2: "./assets/player/gyoza/back_idle2.png",
+      run1: "./assets/player/gyoza/back_run1.png",
+      run2: "./assets/player/gyoza/back_run2.png",
+    },
+    side: {
+      idle1: "./assets/player/gyoza/side_idle1.png",
+      idle2: "./assets/player/gyoza/side_idle2.png",
+      run1: "./assets/player/gyoza/side_run1.png",
+      run2: "./assets/player/gyoza/side_run2.png",
+    },
+  },
+};
 
 const selectionScreen = document.getElementById("selection-screen");
 const gameScreen = document.getElementById("game-screen");
@@ -97,11 +259,22 @@ function getImage(path) {
 }
 
 function getSpriteImage(characterId, dir, moving, frame) {
-  const base = `./assets/player/${characterId}`;
   const dirToken = dir === "left" || dir === "right" ? "side" : dir;
   const action = moving && (frame === 3 || frame === 4) ? "run" : "idle";
   const num = moving ? (frame === 4 ? 2 : 1) : (frame === 2 ? 2 : 1);
-  return getImage(`${base}/${dirToken}_${action}${num}.png`);
+  const key = `${action}${num}`;
+  const path = SPRITE_PATHS[characterId]?.[dirToken]?.[key];
+  return path ? getImage(path) : null;
+}
+
+function preloadSprites() {
+  for (const character of Object.values(SPRITE_PATHS)) {
+    for (const dir of Object.values(character)) {
+      for (const path of Object.values(dir)) {
+        getImage(path);
+      }
+    }
+  }
 }
 
 function nowMs() {
@@ -593,6 +766,7 @@ function initUi() {
 
 function init() {
   roomId = deriveRoomId();
+  preloadSprites();
   resizeCanvas();
   setupKeyboard();
   setupJoystick();
