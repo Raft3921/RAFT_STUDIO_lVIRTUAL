@@ -789,10 +789,11 @@ function drawSelectionUi() {
   const wsOnline = Boolean(wsProvider?.wsconnected) || syncState.ws === "connected";
   const rtcOnline = (rtcProvider?.webrtcConns?.size || 0) > 0 || syncState.rtc === "connected";
   const online = wsOnline || rtcOnline ? "ONLINE" : "CONNECTING";
+  const peers = Math.max(0, (playersMap?.size || 0) - (localPlayer.characterId ? 1 : 0));
   ctx.fillStyle = online === "ONLINE" ? "#7ef0a5" : "#ffd085";
   ctx.font = "bold 12px sans-serif";
-  ctx.fillText(`SYNC: ${online}`, window.innerWidth / 2, 104);
-  const copyRect = { x: Math.floor(window.innerWidth / 2 - 76), y: 106, w: 152, h: 22 };
+  ctx.fillText(`SYNC: ${online} / PEERS: ${peers}`, window.innerWidth / 2, 104);
+  const copyRect = { x: Math.floor(window.innerWidth / 2 - 76), y: 118, w: 152, h: 22 };
   drawButton(copyRect, "COPY URL", "light");
   uiState.selectionActions.push({ action: "copy", rect: copyRect });
 
