@@ -14,12 +14,16 @@ const CHARACTER_DEFS = [
 
 const WORLD_WIDTH = 4800;
 const WORLD_HEIGHT = 3600;
-const PLAYER_SPEED = 170;
+const PLAYER_MAX_SPEED = 190;
+const PLAYER_ACCEL = 1100;
+const PLAYER_DECEL = 900;
 const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
 const ASSET_REV = `${Date.now()}`;
 const WOOD_TILE_PATH = "./assets/tile/wood.png";
+const CAMERA_ZOOM = 1.6;
+const CAMERA_FOLLOW_RATE = 7.5;
 const SPRITE_PATHS = {
   raft: {
     front: {
@@ -221,6 +225,7 @@ let rafId = 0;
 let accumulator = 0;
 let lastMs = performance.now();
 let heartbeatTimer = 0;
+const cameraState = { x: 0, y: 0, initialized: false };
 const transparentSprite = document.createElement("canvas");
 transparentSprite.width = 32;
 transparentSprite.height = 32;
@@ -487,15 +492,25 @@ function axisFromInput() {
   return { x, y, mag };
 }
 
+function approach(current, target, maxDelta) {
+  if (current < target) {
+    return Math.min(target, current + maxDelta);
+  }
+  return Math.max(target, current - maxDelta);
+}
+
 function updateSimulation(dt) {
   if (!localPlayer.characterId) {
     return;
   }
 
   const axis = axisFromInput();
-  localPlayer.vx = axis.x * PLAYER_SPEED;
-  localPlayer.vy = axis.y * PLAYER_SPEED;
-  localPlayer.moving = axis.mag > 0.05;
+  const targetVx = axis.x * PLAYER_MAX_SPEED;
+  const targetVy = axis.y * PLAYER_MAX_SPEED;
+  const accel = axis.mag > 0.05 ? PLAYER_ACCEL : PLAYER_DECEL;
+  localPlayer.vx = approach(localPlayer.vx, targetVx, accel * dt);
+  localPlayer.vy = approach(localPlayer.vy, targetVy, accel * dt);
+  localPlayer.moving = Math.hypot(localPlayer.vx, localPlayer.vy) > 6;
 
   localPlayer.x += localPlayer.vx * dt;
   localPlayer.y += localPlayer.vy * dt;
@@ -514,6 +529,26 @@ function updateSimulation(dt) {
   upsertLocalPlayer();
 }
 
+function updateCamera(dt) {
+  const focusX = localPlayer.characterId ? localPlayer.x : WORLD_WIDTH / 2;
+  const focusY = localPlayer.characterId ? localPlayer.y : WORLD_HEIGHT / 2;
+  const viewWidth = window.innerWidth / CAMERA_ZOOM;
+  const viewHeight = window.innerHeight / CAMERA_ZOOM;
+  const targetX = Math.max(0, Math.min(WORLD_WIDTH - viewWidth, focusX - viewWidth / 2));
+  const targetY = Math.max(0, Math.min(WORLD_HEIGHT - viewHeight, focusY - viewHeight / 2));
+
+  if (!cameraState.initialized) {
+    cameraState.x = targetX;
+    cameraState.y = targetY;
+    cameraState.initialized = true;
+    return;
+  }
+
+  const t = 1 - Math.exp(-CAMERA_FOLLOW_RATE * dt);
+  cameraState.x += (targetX - cameraState.x) * t;
+  cameraState.y += (targetY - cameraState.y) * t;
+}
+
 function drawPlaceholder(x, y) {
   ctx.fillStyle = "#cfd5c9";
   ctx.fillRect(x - 16, y - 26, 32, 32);
@@ -523,9 +558,9 @@ function drawPlaceholder(x, y) {
   ctx.setLineDash([]);
 }
 
-function drawActor(player, cameraX, cameraY) {
-  const screenX = player.x - cameraX;
-  const screenY = player.y - cameraY;
+function drawActor(player, cameraX, cameraY, zoom) {
+  const screenX = (player.x - cameraX) * zoom;
+  const screenY = (player.y - cameraY) * zoom;
   const frame = player.moving
     ? [3, 1, 4, 1][Math.floor(animClock * 10) % 4]
     : Math.floor(animClock * 5) % 2 === 0
@@ -533,55 +568,66 @@ function drawActor(player, cameraX, cameraY) {
       : 2;
   const sprite = getSpriteImage(player.characterId, player.dir, player.moving, frame);
   const drawable = sprite && sprite.complete && sprite.naturalWidth > 0 ? sprite : transparentSprite;
+  const spriteSize = 64 * zoom;
+  const spriteHalf = spriteSize / 2;
 
   ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.beginPath();
-  ctx.ellipse(screenX, screenY + 18, 15, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(screenX, screenY + 24 * zoom, 15 * zoom, 6 * zoom, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.save();
   if (player.dir === "right") {
-    ctx.translate(screenX + 32, screenY - 32);
+    ctx.translate(screenX + spriteHalf, screenY - spriteHalf);
     ctx.scale(-1, 1);
-    ctx.drawImage(drawable, 0, 0, 64, 64);
+    ctx.drawImage(drawable, 0, 0, spriteSize, spriteSize);
   } else {
-    ctx.drawImage(drawable, screenX - 32, screenY - 32, 64, 64);
+    ctx.drawImage(drawable, screenX - spriteHalf, screenY - spriteHalf, spriteSize, spriteSize);
   }
   ctx.restore();
 
   ctx.fillStyle = "#1f2a21";
-  ctx.font = "bold 14px sans-serif";
+  ctx.font = `bold ${Math.max(14, 12 * zoom)}px sans-serif`;
   ctx.textAlign = "center";
-  ctx.fillText(player.name, screenX, screenY - 38);
+  ctx.fillText(player.name, screenX, screenY - 38 * zoom);
 }
 
-function drawBackground(cameraX, cameraY) {
+function drawBackground(cameraX, cameraY, zoom) {
   ctx.fillStyle = "#d8c7a8";
   ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
   const wood = getImage(WOOD_TILE_PATH);
   const tileSize = 64;
-  const startX = -((cameraX % tileSize) + tileSize) % tileSize;
-  const startY = -((cameraY % tileSize) + tileSize) % tileSize;
+  const viewWidth = window.innerWidth / zoom;
+  const viewHeight = window.innerHeight / zoom;
+  const tileScreen = tileSize * zoom;
+  const startWX = Math.floor(cameraX / tileSize) * tileSize;
+  const startWY = Math.floor(cameraY / tileSize) * tileSize;
+  const endWX = cameraX + viewWidth + tileSize;
+  const endWY = cameraY + viewHeight + tileSize;
 
   if (wood && wood.complete && wood.naturalWidth > 0) {
-    for (let y = startY; y < window.innerHeight; y += tileSize) {
-      for (let x = startX; x < window.innerWidth; x += tileSize) {
-        ctx.drawImage(wood, x, y, tileSize, tileSize);
+    for (let wy = startWY; wy < endWY; wy += tileSize) {
+      for (let wx = startWX; wx < endWX; wx += tileSize) {
+        const sx = (wx - cameraX) * zoom;
+        const sy = (wy - cameraY) * zoom;
+        ctx.drawImage(wood, sx, sy, tileScreen, tileScreen);
       }
     }
   }
 
   ctx.strokeStyle = "rgba(80,54,24,0.15)";
   ctx.lineWidth = 1;
-  for (let x = startX; x < window.innerWidth; x += tileSize) {
+  for (let wx = startWX; wx < endWX; wx += tileSize) {
+    const x = (wx - cameraX) * zoom;
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, window.innerHeight);
     ctx.stroke();
   }
 
-  for (let y = startY; y < window.innerHeight; y += tileSize) {
+  for (let wy = startWY; wy < endWY; wy += tileSize) {
+    const y = (wy - cameraY) * zoom;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(window.innerWidth, y);
@@ -592,12 +638,10 @@ function drawBackground(cameraX, cameraY) {
 function render() {
   cleanupStalePlayers();
 
-  const focusX = localPlayer.characterId ? localPlayer.x : WORLD_WIDTH / 2;
-  const focusY = localPlayer.characterId ? localPlayer.y : WORLD_HEIGHT / 2;
-  const cameraX = Math.max(0, Math.min(WORLD_WIDTH - window.innerWidth, focusX - window.innerWidth / 2));
-  const cameraY = Math.max(0, Math.min(WORLD_HEIGHT - window.innerHeight, focusY - window.innerHeight / 2));
+  const cameraX = cameraState.x;
+  const cameraY = cameraState.y;
 
-  drawBackground(cameraX, cameraY);
+  drawBackground(cameraX, cameraY, CAMERA_ZOOM);
 
   const players = [];
   playersMap.forEach((player) => {
@@ -609,7 +653,7 @@ function render() {
 
   players.sort((a, b) => a.y - b.y);
   for (const player of players) {
-    drawActor(player, cameraX, cameraY);
+    drawActor(player, cameraX, cameraY, CAMERA_ZOOM);
   }
 }
 
@@ -620,6 +664,7 @@ function frameLoop(ts) {
 
   while (accumulator >= STEP_SEC) {
     updateSimulation(STEP_SEC);
+    updateCamera(STEP_SEC);
     animClock += STEP_SEC;
     accumulator -= STEP_SEC;
   }
@@ -821,6 +866,7 @@ window.advanceTime = (ms) => {
   while (left > 0) {
     const dt = Math.min(STEP_SEC, left);
     updateSimulation(dt);
+    updateCamera(dt);
     animClock += dt;
     left -= dt;
   }
