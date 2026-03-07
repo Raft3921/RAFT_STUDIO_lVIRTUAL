@@ -22,6 +22,7 @@ const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
 const ASSET_REV = `${Date.now()}`;
 const WOOD_TILE_PATH = "./assets/tile/wood.png";
+const PLAYER_SELECT_FRAME_PATH = "./assets/ui/player_select.png";
 const CAMERA_ZOOM = 2;
 const CAMERA_FOLLOW_RATE = 7.5;
 const SPRITE_PATHS = {
@@ -279,6 +280,7 @@ function preloadSprites() {
       }
     }
   }
+  getImage(PLAYER_SELECT_FRAME_PATH);
 }
 
 function nowMs() {
@@ -709,11 +711,20 @@ function drawSelectionUi() {
     const rect = { x, y, w: cardW, h: cardH };
     uiState.selectionHitboxes.push({ characterId: def.id, rect, blocked });
 
-    ctx.fillStyle = blocked ? "rgba(110,56,56,0.9)" : "rgba(240,245,235,0.95)";
-    ctx.strokeStyle = blocked ? "rgba(255,180,180,0.5)" : "rgba(33,56,39,0.35)";
-    ctx.lineWidth = 2;
-    ctx.fillRect(x, y, cardW, cardH);
-    ctx.strokeRect(x, y, cardW, cardH);
+    const frameImg = getImage(PLAYER_SELECT_FRAME_PATH);
+    if (frameImg && frameImg.complete && frameImg.naturalWidth > 0) {
+      ctx.drawImage(frameImg, x, y, cardW, cardH);
+    } else {
+      ctx.fillStyle = "rgba(240,245,235,0.95)";
+      ctx.strokeStyle = "rgba(33,56,39,0.35)";
+      ctx.lineWidth = 2;
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.strokeRect(x, y, cardW, cardH);
+    }
+    if (blocked) {
+      ctx.fillStyle = "rgba(96,32,32,0.48)";
+      ctx.fillRect(x, y, cardW, cardH);
+    }
 
     const sprite = getSpriteImage(def.id, "front", false, frame);
     const drawable = sprite && sprite.complete && sprite.naturalWidth > 0 ? sprite : transparentSprite;
