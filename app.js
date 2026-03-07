@@ -187,14 +187,6 @@ const SPRITE_PATHS = {
   },
 };
 
-const selectionScreen = document.getElementById("selection-screen");
-const gameScreen = document.getElementById("game-screen");
-const characterGrid = document.getElementById("character-grid");
-const roomInput = document.getElementById("room-id-input");
-const roomApplyBtn = document.getElementById("room-apply-btn");
-const roomCopyBtn = document.getElementById("room-copy-btn");
-const changeCharacterBtn = document.getElementById("change-character-btn");
-const playerLabel = document.getElementById("player-label");
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 const joystick = document.getElementById("joystick");
@@ -214,7 +206,13 @@ const localPlayer = {
 };
 
 const imageCache = new Map();
-const cardViews = [];
+const uiState = {
+  mode: "selection",
+  selectionHitboxes: [],
+  hudHitboxes: [],
+  toast: "",
+  toastUntil: 0,
+};
 let doc;
 let provider;
 let playersMap;
@@ -365,9 +363,7 @@ function acquireCharacter(characterId) {
 
   locksMap.set(characterId, { clientId, ts: nowMs() });
   upsertLocalPlayer();
-  renderCards();
-  updatePlayerLabel();
-  showGame();
+  setUiMode("game");
   return true;
 }
 
@@ -385,83 +381,98 @@ function occupantName(lock) {
   return "誰か";
 }
 
-function renderCards() {
-  cardViews.forEach((card) => {
-    const lock = readValidLock(card.characterId);
-    const blocked = Boolean(lock && lock.clientId !== clientId);
-    card.button.disabled = blocked;
-    card.status.className = `status ${blocked ? "busy" : "free"}`;
-    card.status.textContent = blocked ? `使用中: ${occupantName(lock)}` : "選択できます";
-  });
-}
-
-function createCharacterCard(def) {
-  const article = document.createElement("article");
-  article.className = "character-card";
-
-  const preview = document.createElement("div");
-  preview.className = "character-preview";
-  const img = document.createElement("img");
-  img.alt = `${def.name}のプレビュー`;
-  const ph = document.createElement("span");
-  ph.className = "placeholder";
-  ph.textContent = "画像準備中";
-  preview.append(img, ph);
-
-  const name = document.createElement("p");
-  name.className = "character-name";
-  name.textContent = def.name;
-
-  const status = document.createElement("p");
-  status.className = "status free";
-  status.textContent = "選択できます";
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "card-select";
-  button.textContent = "このキャラで参加";
-  button.addEventListener("click", () => {
-    acquireCharacter(def.id);
-  });
-
-  article.append(preview, name, status, button);
-  characterGrid.append(article);
-  cardViews.push({ characterId: def.id, img, placeholder: ph, status, button });
-}
-
-function startCardPreviewLoop() {
-  setInterval(() => {
-    const frame = Math.floor(performance.now() / 350) % 2 === 0 ? 1 : 2;
-    cardViews.forEach((card) => {
-      const sprite = getSpriteImage(card.characterId, "front", false, frame);
-      if (sprite) {
-        card.img.src = sprite.src;
-        card.img.style.visibility = "visible";
-        card.placeholder.style.display = "none";
-      } else {
-        card.img.style.visibility = "hidden";
-        card.placeholder.style.display = "block";
-      }
-    });
-    renderCards();
-  }, 250);
-}
-
-function updatePlayerLabel() {
-  const room = roomId;
-  if (!localPlayer.characterId) {
-    playerLabel.textContent = `部屋: ${room}`;
-    return;
+function setUiMode(mode) {
+  uiState.mode = mode;
+  joystick.style.display = mode === "game" ? "grid" : "none";
+  if (mode !== "game") {
+    inputState.up = false;
+    inputState.down = false;
+    inputState.left = false;
+    inputState.right = false;
+    inputState.joyX = 0;
+    inputState.joyY = 0;
+    joystickKnob.style.transform = "translate(0px, 0px)";
   }
-  playerLabel.textContent = `部屋: ${room} / ${localPlayer.name}`;
 }
 
-function showSelection() {
-  selectionScreen.classList.add("active");
+function pointInRect(px, py, rect) {
+  return px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h;
 }
 
-function showGame() {
-  selectionScreen.classList.remove("active");
+function showToast(text, durationMs = 1200) {
+  uiState.toast = text;
+  uiState.toastUntil = performance.now() + durationMs;
+}
+
+async function copyInviteUrl() {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    showToast("招待URLをコピーしました");
+  } catch {
+    showToast("コピーに失敗しました");
+  }
+}
+
+function setupCanvasUi() {
+  function handleCanvasPress(x, y) {
+    const sx = (x * window.innerWidth) / canvas.clientWidth;
+    const sy = (y * window.innerHeight) / canvas.clientHeight;
+
+    if (uiState.mode === "selection") {
+      if (uiState.selectionHitboxes.length === 0) {
+        const { left, top, cols, cardW, cardH, gap } = getSelectionLayout();
+        uiState.selectionHitboxes = CHARACTER_DEFS.map((def, index) => {
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          const rect = { x: left + col * (cardW + gap), y: top + row * (cardH + gap), w: cardW, h: cardH };
+          const lock = readValidLock(def.id);
+          return { characterId: def.id, rect, blocked: Boolean(lock && lock.clientId !== clientId) };
+        });
+      }
+      for (const hit of uiState.selectionHitboxes) {
+        if (pointInRect(sx, sy, hit.rect)) {
+          if (!hit.blocked) {
+            acquireCharacter(hit.characterId);
+          }
+          return;
+        }
+      }
+      return;
+    }
+
+    for (const hit of uiState.hudHitboxes) {
+      if (!pointInRect(sx, sy, hit.rect)) {
+        continue;
+      }
+      if (hit.action === "back") {
+        releaseMyLock();
+        playersMap.delete(clientId);
+        localPlayer.characterId = null;
+        localPlayer.name = "";
+        setUiMode("selection");
+      } else if (hit.action === "copy") {
+        copyInviteUrl();
+      }
+      return;
+    }
+  }
+
+  canvas.addEventListener("pointerdown", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    handleCanvasPress(event.clientX - rect.left, event.clientY - rect.top);
+  });
+
+  canvas.addEventListener("click", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    handleCanvasPress(event.clientX - rect.left, event.clientY - rect.top);
+  });
+
+  canvas.addEventListener("touchstart", (event) => {
+    if (!event.touches[0]) return;
+    const rect = canvas.getBoundingClientRect();
+    handleCanvasPress(event.touches[0].clientX - rect.left, event.touches[0].clientY - rect.top);
+    event.preventDefault();
+  });
 }
 
 function resizeCanvas() {
@@ -636,6 +647,148 @@ function drawBackground(cameraX, cameraY, zoom) {
   }
 }
 
+function drawButton(rect, label, tone = "light") {
+  ctx.fillStyle = tone === "dark" ? "rgba(28,39,31,0.92)" : "rgba(245,247,241,0.92)";
+  ctx.strokeStyle = tone === "dark" ? "#b9d1b7" : "rgba(52,71,57,0.35)";
+  ctx.lineWidth = 2;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.fillStyle = tone === "dark" ? "#eaf5e7" : "#1f2a21";
+  ctx.font = "bold 14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+}
+
+function getSelectionLayout() {
+  const baseCardW = 150;
+  const baseCardH = 188;
+  const baseGap = 12;
+  const left = 20;
+  const top = 112;
+  const cols = Math.max(1, Math.floor((window.innerWidth - left * 2 + baseGap) / (baseCardW + baseGap)));
+  const rows = Math.ceil(CHARACTER_DEFS.length / cols);
+  const fitW = (window.innerWidth - left * 2 - baseGap * (cols - 1)) / (cols * baseCardW);
+  const fitH = (window.innerHeight - top - 24 - baseGap * (rows - 1)) / (rows * baseCardH);
+  const scale = Math.max(0.58, Math.min(1, fitW, fitH));
+  return {
+    left,
+    top,
+    cols,
+    scale,
+    cardW: Math.floor(baseCardW * scale),
+    cardH: Math.floor(baseCardH * scale),
+    gap: Math.floor(baseGap * scale),
+  };
+}
+
+function drawSelectionUi() {
+  uiState.selectionHitboxes = [];
+  ctx.fillStyle = "rgba(15,18,15,0.58)";
+  ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+  ctx.fillStyle = "#f2f7ef";
+  ctx.font = "bold 28px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("キャラクターを選択", 20, 18);
+  ctx.font = "14px sans-serif";
+  ctx.fillText(`部屋: ${roomId}`, 20, 56);
+  ctx.fillText("同じキャラは1人のみ。使用中キャラは選択できません。", 20, 78);
+
+  const { left, top, cols, scale, cardW, cardH, gap } = getSelectionLayout();
+  const frame = Math.floor(animClock * 5) % 2 === 0 ? 1 : 2;
+
+  CHARACTER_DEFS.forEach((def, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = left + col * (cardW + gap);
+    const y = top + row * (cardH + gap);
+    const lock = readValidLock(def.id);
+    const blocked = Boolean(lock && lock.clientId !== clientId);
+    const rect = { x, y, w: cardW, h: cardH };
+    uiState.selectionHitboxes.push({ characterId: def.id, rect, blocked });
+
+    ctx.fillStyle = blocked ? "rgba(110,56,56,0.9)" : "rgba(240,245,235,0.95)";
+    ctx.strokeStyle = blocked ? "rgba(255,180,180,0.5)" : "rgba(33,56,39,0.35)";
+    ctx.lineWidth = 2;
+    ctx.fillRect(x, y, cardW, cardH);
+    ctx.strokeRect(x, y, cardW, cardH);
+
+    const sprite = getSpriteImage(def.id, "front", false, frame);
+    const drawable = sprite && sprite.complete && sprite.naturalWidth > 0 ? sprite : transparentSprite;
+    const avatar = Math.floor(64 * scale);
+    ctx.drawImage(drawable, x + cardW / 2 - avatar / 2, y + Math.floor(18 * scale), avatar, avatar);
+
+    ctx.fillStyle = blocked ? "#ffe6e6" : "#1f2a21";
+    ctx.font = `bold ${Math.max(14, Math.floor(20 * scale))}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(def.name, x + cardW / 2, y + Math.floor(94 * scale));
+
+    ctx.font = `${Math.max(10, Math.floor(12 * scale))}px sans-serif`;
+    ctx.fillStyle = blocked ? "#ffd4d4" : "#1b6c58";
+    ctx.fillText(blocked ? `使用中: ${occupantName(lock)}` : "選択できます", x + cardW / 2, y + Math.floor(124 * scale));
+
+    drawButton(
+      {
+        x: x + Math.floor(12 * scale),
+        y: y + Math.floor(148 * scale),
+        w: cardW - Math.floor(24 * scale),
+        h: Math.floor(30 * scale),
+      },
+      blocked ? "使用中" : "このキャラで参加",
+      blocked ? "dark" : "light",
+    );
+  });
+}
+
+function drawHudUi() {
+  uiState.hudHitboxes = [];
+  const panel = { x: 12, y: 12, w: Math.min(560, window.innerWidth - 24), h: 44 };
+  ctx.fillStyle = "rgba(245,247,241,0.9)";
+  ctx.strokeStyle = "rgba(49,68,56,0.32)";
+  ctx.lineWidth = 2;
+  ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+  ctx.strokeRect(panel.x, panel.y, panel.w, panel.h);
+
+  const label = `部屋: ${roomId}${localPlayer.name ? ` / ${localPlayer.name}` : ""}`;
+  ctx.fillStyle = "#1f2a21";
+  ctx.font = "bold 14px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, panel.x + 12, panel.y + panel.h / 2);
+
+  const backRect = { x: panel.x + panel.w - 170, y: panel.y + 6, w: 158, h: 32 };
+  drawButton(backRect, "キャラ選択へ戻る", "light");
+  uiState.hudHitboxes.push({ action: "back", rect: backRect });
+
+  const copyRect = { x: panel.x + panel.w + 8, y: panel.y + 6, w: 110, h: 32 };
+  if (copyRect.x + copyRect.w <= window.innerWidth - 12) {
+    drawButton(copyRect, "招待URLコピー", "light");
+    uiState.hudHitboxes.push({ action: "copy", rect: copyRect });
+  }
+}
+
+function drawToast() {
+  if (!uiState.toast || performance.now() > uiState.toastUntil) {
+    return;
+  }
+  const w = Math.min(window.innerWidth - 30, 360);
+  const h = 36;
+  const x = (window.innerWidth - w) / 2;
+  const y = window.innerHeight - 58;
+  ctx.fillStyle = "rgba(22,28,23,0.88)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = "rgba(180,210,185,0.55)";
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = "#eef6eb";
+  ctx.font = "bold 14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(uiState.toast, x + w / 2, y + h / 2);
+}
+
 function render() {
   ctx.imageSmoothingEnabled = false;
   cleanupStalePlayers();
@@ -657,6 +810,13 @@ function render() {
   for (const player of players) {
     drawActor(player, cameraX, cameraY, CAMERA_ZOOM);
   }
+
+  if (uiState.mode === "selection") {
+    drawSelectionUi();
+  } else {
+    drawHudUi();
+  }
+  drawToast();
 }
 
 function frameLoop(ts) {
@@ -764,9 +924,6 @@ function setupSync() {
   playersMap = doc.getMap("players");
   locksMap = doc.getMap("locks");
 
-  playersMap.observe(renderCards);
-  locksMap.observe(renderCards);
-
   heartbeatTimer = window.setInterval(() => {
     cleanupStalePlayers();
     cleanupStaleLocks();
@@ -783,42 +940,6 @@ function setupSync() {
   });
 }
 
-function initUi() {
-  CHARACTER_DEFS.forEach(createCharacterCard);
-  startCardPreviewLoop();
-  renderCards();
-
-  roomInput.value = roomId;
-  roomApplyBtn.addEventListener("click", () => setRoom(roomInput.value));
-  roomCopyBtn.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      roomCopyBtn.textContent = "コピー済み";
-      setTimeout(() => {
-        roomCopyBtn.textContent = "招待URLをコピー";
-      }, 1200);
-    } catch {
-      roomCopyBtn.textContent = "コピー失敗";
-      setTimeout(() => {
-        roomCopyBtn.textContent = "招待URLをコピー";
-      }, 1200);
-    }
-  });
-
-  changeCharacterBtn.addEventListener("click", () => {
-    releaseMyLock();
-    playersMap.delete(clientId);
-    localPlayer.characterId = null;
-    localPlayer.name = "";
-    updatePlayerLabel();
-    showSelection();
-    renderCards();
-  });
-
-  updatePlayerLabel();
-  showSelection();
-}
-
 function init() {
   roomId = deriveRoomId();
   getImage(WOOD_TILE_PATH);
@@ -826,8 +947,9 @@ function init() {
   resizeCanvas();
   setupKeyboard();
   setupJoystick();
+  setupCanvasUi();
   setupSync();
-  initUi();
+  setUiMode(localPlayer.characterId ? "game" : "selection");
 
   window.addEventListener("resize", resizeCanvas);
   cancelAnimationFrame(rafId);

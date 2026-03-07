@@ -11,23 +11,6 @@
     <main id="app">
       <section id="game-screen" class="screen active" aria-label="ゲーム画面">
         <canvas id="game-canvas" width="960" height="540"></canvas>
-        <section id="selection-screen" class="selection-overlay active" aria-label="キャラクター選択">
-          <header class="panel-header">
-            <h1>キャラクターを選択</h1>
-            <p>同じキャラは1人だけ選択できます。選択後はそのまま部屋に参加します。</p>
-          </header>
-          <div class="room-row">
-            <label for="room-id-input">部屋ID</label>
-            <input id="room-id-input" type="text" maxlength="40" />
-            <button id="room-apply-btn" type="button">部屋を変更</button>
-            <button id="room-copy-btn" type="button">招待URLをコピー</button>
-          </div>
-          <div id="character-grid" class="character-grid"></div>
-        </section>
-        <div id="hud" class="hud">
-          <span id="player-label"></span>
-          <button id="change-character-btn" type="button">キャラ選択に戻る</button>
-        </div>
         <div id="joystick" class="joystick" aria-label="バーチャルスティック">
           <div class="joystick-base"></div>
           <div id="joystick-knob" class="joystick-knob"></div>
