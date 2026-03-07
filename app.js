@@ -94,7 +94,7 @@ function getImage(path) {
 
 function getSpriteImage(characterId, dir, moving, frame) {
   const base = `./assets/player/${characterId}`;
-  const dirToken = dir === "left" || dir === "right" ? "front" : dir;
+  const dirToken = dir === "left" || dir === "right" ? "side" : dir;
   const action = moving && (frame === 3 || frame === 4) ? "run" : "idle";
   const num = moving ? (frame === 4 ? 2 : 1) : (frame === 2 ? 2 : 1);
   return getImage(`${base}/${dirToken}_${action}${num}.png`);
@@ -349,7 +349,9 @@ function drawActor(player, cameraX, cameraY) {
   const screenX = player.x - cameraX;
   const screenY = player.y - cameraY;
   const frame = player.moving
-    ? [3, 1, 4, 1][Math.floor(animClock * 10) % 4] // run1, idle1, run2, idle1
+    ? Math.floor(animClock * 10) % 2 === 0
+      ? 3
+      : 4
     : Math.floor(animClock * 5) % 2 === 0
       ? 1
       : 2;
