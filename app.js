@@ -19,8 +19,17 @@ const SPRITE_FILES = {
     "back_run1.png",
     "back_run2.png",
     "front_idle1.png",
+    "front_idle2.png",
+    "front_run1.png",
+    "front_run2.png",
   ]),
-  mai: new Set(["idle1.png", "idle2.png"]),
+  mai: new Set([
+    "back_idle1.png",
+    "back_idle2.png",
+    "back_run1.png",
+    "back_run2.png",
+    "front_idle1.png",
+  ]),
   yansan: new Set(["idle1.png", "idle2.png"]),
   tanutsuna: new Set(["idle1.png", "idle2.png"]),
   muto: new Set(["idle1.png", "idle2.png"]),
@@ -29,8 +38,8 @@ const SPRITE_FILES = {
   gyoza: new Set(["idle1.png", "idle2.png"]),
 };
 
-const WORLD_WIDTH = 2000;
-const WORLD_HEIGHT = 1400;
+const WORLD_WIDTH = 4800;
+const WORLD_HEIGHT = 3600;
 const PLAYER_SPEED = 170;
 const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
@@ -74,6 +83,9 @@ let rafId = 0;
 let accumulator = 0;
 let lastMs = performance.now();
 let heartbeatTimer = 0;
+const transparentSprite = document.createElement("canvas");
+transparentSprite.width = 32;
+transparentSprite.height = 32;
 
 function deriveRoomId() {
   const hashRoom = window.location.hash.replace(/^#/, "").trim();
@@ -111,38 +123,29 @@ function getSpriteImage(characterId, dir, moving, frame) {
   const runToken = frame === 3 ? "run1" : frame === 4 ? "run2" : null;
   const candidates = [];
 
-  if (moving && runToken && files.has(`${dir}_${runToken}.png`)) {
-    candidates.push(`${base}/${dir}_${runToken}.png`);
-  }
-  if (!moving && files.has(`${dir}_idle${frameSafe}.png`)) {
-    candidates.push(`${base}/${dir}_idle${frameSafe}.png`);
-  }
-  if (moving && runToken && files.has(`${runToken}.png`)) {
-    candidates.push(`${base}/${runToken}.png`);
-  }
-  if (files.has(`${dir}_idle${frameSafe}.png`)) {
-    candidates.push(`${base}/${dir}_idle${frameSafe}.png`);
-  }
-  if (files.has(`idle${frameSafe}.png`)) {
-    candidates.push(`${base}/idle${frameSafe}.png`);
-  }
-
   if (moving) {
+    if (runToken) {
+      if (files.has(`${dir}_${runToken}.png`)) {
+        candidates.push(`${base}/${dir}_${runToken}.png`);
+      }
+      if (files.has(`${runToken}.png`)) {
+        candidates.push(`${base}/${runToken}.png`);
+      }
+    } else {
+      if (files.has(`${dir}_idle1.png`)) {
+        candidates.push(`${base}/${dir}_idle1.png`);
+      }
+      if (files.has("idle1.png")) {
+        candidates.push(`${base}/idle1.png`);
+      }
+    }
+  } else {
+    if (files.has(`${dir}_idle${frameSafe}.png`)) {
+      candidates.push(`${base}/${dir}_idle${frameSafe}.png`);
+    }
     if (files.has(`idle${frameSafe}.png`)) {
       candidates.push(`${base}/idle${frameSafe}.png`);
     }
-    if (files.has("idle1.png")) {
-      candidates.push(`${base}/idle1.png`);
-    }
-  }
-  if (files.has("idle1.png")) {
-    candidates.push(`${base}/idle1.png`);
-  }
-  if (files.has("back_idle1.png")) {
-    candidates.push(`${base}/back_idle1.png`);
-  }
-  if (files.has("front_idle1.png")) {
-    candidates.push(`${base}/front_idle1.png`);
   }
 
   for (const path of candidates) {
@@ -410,26 +413,22 @@ function drawActor(player, cameraX, cameraY) {
     : Math.floor(animClock * 5) % 2 === 0
       ? 1
       : 2;
-  const sprite = getSpriteImage(player.characterId, player.dir, player.moving, frame);
+  const sprite = getSpriteImage(player.characterId, player.dir, player.moving, frame) || transparentSprite;
 
   ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.beginPath();
   ctx.ellipse(screenX, screenY + 10, 15, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (sprite) {
-    ctx.save();
-    if (player.dir === "right") {
-      ctx.translate(screenX + 32, screenY - 32);
-      ctx.scale(-1, 1);
-      ctx.drawImage(sprite, 0, 0, 64, 64);
-    } else {
-      ctx.drawImage(sprite, screenX - 32, screenY - 32, 64, 64);
-    }
-    ctx.restore();
+  ctx.save();
+  if (player.dir === "right") {
+    ctx.translate(screenX + 32, screenY - 32);
+    ctx.scale(-1, 1);
+    ctx.drawImage(sprite, 0, 0, 64, 64);
   } else {
-    drawPlaceholder(screenX, screenY);
+    ctx.drawImage(sprite, screenX - 32, screenY - 32, 64, 64);
   }
+  ctx.restore();
 
   ctx.fillStyle = "#1f2a21";
   ctx.font = "bold 14px sans-serif";
