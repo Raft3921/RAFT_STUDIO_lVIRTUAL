@@ -1,4 +1,22 @@
-import { joinRoom } from "https://esm.sh/trystero@0.21.5/nostr";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import {
+  getDatabase,
+  onDisconnect,
+  onValue,
+  ref,
+  remove,
+  set,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBiG900ktRuSw6AKAHk_bLpk4w70ZSFvVw",
+  authDomain: "raft-studio-virtual.firebaseapp.com",
+  databaseURL: "https://raft-studio-virtual-default-rtdb.firebaseio.com",
+  projectId: "raft-studio-virtual",
+  storageBucket: "raft-studio-virtual.firebasestorage.app",
+  messagingSenderId: "18437364527",
+  appId: "1:18437364527:web:a0045fbac8da99a4bb1fda",
+};
 
 const CHARACTER_DEFS = [
   { id: "raft", name: "RAFT" },
@@ -224,11 +242,16 @@ let rafId = 0;
 let accumulator = 0;
 let lastMs = performance.now();
 let heartbeatTimer = 0;
-let p2pRoom = null;
-let sendPresence = null;
+let db;
+let playersRef;
+let locksRef;
+let localPlayerRef;
+let localLockRef = null;
+let roomBasePath = "";
+let stopPlayersSync = null;
+let stopLocksSync = null;
 const cameraState = { x: 0, y: 0, initialized: false };
 const syncState = { rtc: "connecting" };
-const networkState = { peers: new Set() };
 const transparentSprite = document.createElement("canvas");
 transparentSprite.width = 32;
 transparentSprite.height = 32;
@@ -326,7 +349,7 @@ function upsertLocalPlayer() {
   if (!localPlayer.characterId) {
     return;
   }
-  playersMap.set(clientId, {
+  const payload = {
     x: localPlayer.x,
     y: localPlayer.y,
     vx: localPlayer.vx,
@@ -336,7 +359,13 @@ function upsertLocalPlayer() {
     characterId: localPlayer.characterId,
     name: localPlayer.name,
     lastSeen: nowMs(),
-  });
+  };
+  playersMap.set(clientId, payload);
+  if (localPlayerRef) {
+    set(localPlayerRef, payload).catch(() => {
+      syncState.rtc = "disconnected";
+    });
+  }
 }
 
 function releaseMyLock() {
@@ -346,7 +375,12 @@ function releaseMyLock() {
   const lock = locksMap.get(localPlayer.characterId);
   if (lock?.clientId === clientId) {
     locksMap.delete(localPlayer.characterId);
-    broadcastPresence();
+    if (localLockRef) {
+      remove(localLockRef).catch(() => {
+        syncState.rtc = "disconnected";
+      });
+      localLockRef = null;
+    }
   }
 }
 
@@ -363,6 +397,11 @@ function acquireCharacter(characterId) {
     const prevLock = locksMap.get(previous);
     if (prevLock?.clientId === clientId) {
       locksMap.delete(previous);
+      if (db) {
+        remove(ref(db, `${roomBasePath}/locks/${previous}`)).catch(() => {
+          syncState.rtc = "disconnected";
+        });
+      }
     }
   }
 
@@ -372,8 +411,14 @@ function acquireCharacter(characterId) {
 
   const stamp = nowMs();
   locksMap.set(characterId, { clientId, ts: stamp, acquiredAt: stamp });
+  if (db) {
+    localLockRef = ref(db, `${roomBasePath}/locks/${characterId}`);
+    set(localLockRef, { clientId, ts: stamp, acquiredAt: stamp }).catch(() => {
+      syncState.rtc = "disconnected";
+    });
+    onDisconnect(localLockRef).remove().catch(() => {});
+  }
   upsertLocalPlayer();
-  broadcastPresence();
   setUiMode("game");
   requestGameFullscreen();
   return true;
@@ -520,6 +565,11 @@ function setupCanvasUi() {
       if (hit.action === "back") {
         releaseMyLock();
         playersMap.delete(clientId);
+        if (localPlayerRef) {
+          remove(localPlayerRef).catch(() => {
+            syncState.rtc = "disconnected";
+          });
+        }
         localPlayer.characterId = null;
         localPlayer.name = "";
         setUiMode("selection");
@@ -790,7 +840,7 @@ function drawSelectionUi() {
   ctx.fillText(`ROOM ID: ${roomId}`, window.innerWidth / 2, 86);
   const rtcOnline = syncState.rtc === "connected";
   const online = rtcOnline ? "ONLINE" : "CONNECTING";
-  const peers = networkState.peers.size;
+  const peers = Math.max(0, (playersMap?.size || 0) - (localPlayer.characterId ? 1 : 0));
   ctx.fillStyle = online === "ONLINE" ? "#7ef0a5" : "#ffd085";
   ctx.font = "bold 12px sans-serif";
   ctx.fillText(`SYNC: ${online} / PEERS: ${peers}`, window.innerWidth / 2, 104);
@@ -876,6 +926,11 @@ function ensureLocalCharacterOwnership() {
   const lock = readValidLock(localPlayer.characterId);
   if (lock && lock.clientId !== clientId) {
     playersMap.delete(clientId);
+    if (localPlayerRef) {
+      remove(localPlayerRef).catch(() => {
+        syncState.rtc = "disconnected";
+      });
+    }
     localPlayer.characterId = null;
     localPlayer.name = "";
     setUiMode("selection");
@@ -1072,150 +1127,61 @@ function setupJoystick() {
   });
 }
 
-function removeLocksByClient(targetClientId) {
-  locksMap.forEach((lock, characterId) => {
-    if (lock?.clientId === targetClientId) {
-      locksMap.delete(characterId);
+function rebuildMapFromSnapshot(target, snapshot) {
+  target.clear();
+  if (!snapshot.exists()) {
+    return;
+  }
+  snapshot.forEach((child) => {
+    if (child.key) {
+      target.set(child.key, child.val());
     }
   });
-}
-
-function buildLocalPresence() {
-  const lock = localPlayer.characterId ? locksMap.get(localPlayer.characterId) : null;
-  return {
-    clientId,
-    player: localPlayer.characterId
-      ? {
-          x: localPlayer.x,
-          y: localPlayer.y,
-          vx: localPlayer.vx,
-          vy: localPlayer.vy,
-          dir: localPlayer.dir,
-          moving: localPlayer.moving,
-          characterId: localPlayer.characterId,
-          name: localPlayer.name,
-        }
-      : null,
-    lock: localPlayer.characterId && lock
-      ? {
-          characterId: localPlayer.characterId,
-          ts: Number(lock.ts) || nowMs(),
-          acquiredAt: Number(lock.acquiredAt) || Number(lock.ts) || nowMs(),
-        }
-      : null,
-  };
-}
-
-function broadcastPresence() {
-  if (!sendPresence) {
-    return;
-  }
-  sendPresence(buildLocalPresence());
-}
-
-function applyRemotePresence(payload, peerId) {
-  if (!payload || typeof payload !== "object" || typeof payload.clientId !== "string") {
-    return;
-  }
-  const remoteClientId = payload.clientId;
-  if (!remoteClientId || remoteClientId === clientId) {
-    return;
-  }
-
-  networkState.peers.add(peerId);
-
-  if (payload.player && typeof payload.player === "object") {
-    playersMap.set(remoteClientId, {
-      x: Number(payload.player.x) || 0,
-      y: Number(payload.player.y) || 0,
-      vx: Number(payload.player.vx) || 0,
-      vy: Number(payload.player.vy) || 0,
-      dir: payload.player.dir || "front",
-      moving: Boolean(payload.player.moving),
-      characterId: payload.player.characterId || null,
-      name: payload.player.name || "",
-      lastSeen: nowMs(),
-    });
-  } else {
-    playersMap.delete(remoteClientId);
-  }
-
-  removeLocksByClient(remoteClientId);
-
-  const remoteLock = payload.lock;
-  if (remoteLock && typeof remoteLock === "object" && typeof remoteLock.characterId === "string") {
-    const candidate = {
-      clientId: remoteClientId,
-      ts: Number(remoteLock.ts) || nowMs(),
-      acquiredAt: Number(remoteLock.acquiredAt) || Number(remoteLock.ts) || nowMs(),
-    };
-    const current = locksMap.get(remoteLock.characterId);
-    if (!current || current.clientId === remoteClientId) {
-      locksMap.set(remoteLock.characterId, candidate);
-    } else {
-      const currentAcquiredAt = Number(current.acquiredAt) || Number(current.ts) || nowMs();
-      const candidateWins =
-        candidate.acquiredAt < currentAcquiredAt ||
-        (candidate.acquiredAt === currentAcquiredAt && candidate.clientId < current.clientId);
-      if (candidateWins) {
-        locksMap.set(remoteLock.characterId, candidate);
-      }
-    }
-  }
-
-  ensureLocalCharacterOwnership();
 }
 
 function setupSync() {
   if (heartbeatTimer) {
     window.clearInterval(heartbeatTimer);
   }
-  p2pRoom?.leave?.();
-  networkState.peers.clear();
+  stopPlayersSync?.();
+  stopLocksSync?.();
   playersMap = new Map();
   locksMap = new Map();
-  syncState.rtc = "connected";
+  syncState.rtc = "connecting";
 
-  p2pRoom = joinRoom(
-    {
-      appId: "raft-studio-virtual-v1",
-      relayUrls: [
-        "wss://relay.damus.io",
-        "wss://nos.lol",
-        "wss://relay.nostr.band",
-        "wss://offchain.pub",
-      ],
-      relayRedundancy: 4,
+  const app = initializeApp(FIREBASE_CONFIG, `raft-virtual-${Date.now()}`);
+  db = getDatabase(app);
+  roomBasePath = `rooms/${roomId}`;
+  playersRef = ref(db, `${roomBasePath}/players`);
+  locksRef = ref(db, `${roomBasePath}/locks`);
+  localPlayerRef = ref(db, `${roomBasePath}/players/${clientId}`);
+
+  stopPlayersSync = onValue(
+    playersRef,
+    (snapshot) => {
+      rebuildMapFromSnapshot(playersMap, snapshot);
+      syncState.rtc = "connected";
     },
-    roomId
+    () => {
+      syncState.rtc = "disconnected";
+    }
   );
-  const peerClientMap = new Map();
-  const [sendRemotePresence, onRemotePresence] = p2pRoom.makeAction("presence");
-  sendPresence = sendRemotePresence;
-
-  onRemotePresence((payload, peerId) => {
-    if (payload?.clientId && typeof payload.clientId === "string") {
-      peerClientMap.set(peerId, payload.clientId);
+  stopLocksSync = onValue(
+    locksRef,
+    (snapshot) => {
+      rebuildMapFromSnapshot(locksMap, snapshot);
+      ensureLocalCharacterOwnership();
+      syncState.rtc = "connected";
+    },
+    () => {
+      syncState.rtc = "disconnected";
     }
-    applyRemotePresence(payload, peerId);
-    syncState.rtc = "connected";
-  });
+  );
 
-  p2pRoom.onPeerJoin((peerId) => {
-    networkState.peers.add(peerId);
-    syncState.rtc = "connected";
-    broadcastPresence();
-  });
-
-  p2pRoom.onPeerLeave((peerId) => {
-    networkState.peers.delete(peerId);
-    const remoteClientId = peerClientMap.get(peerId);
-    if (remoteClientId) {
-      playersMap.delete(remoteClientId);
-      removeLocksByClient(remoteClientId);
-      peerClientMap.delete(peerId);
-    }
-  });
+  onDisconnect(localPlayerRef).remove().catch(() => {});
+  if (localLockRef) {
+    onDisconnect(localLockRef).remove().catch(() => {});
+  }
 
   heartbeatTimer = window.setInterval(() => {
     cleanupStalePlayers();
@@ -1230,16 +1196,25 @@ function setupSync() {
         ts: stamp,
         acquiredAt: Number(prev?.acquiredAt) || stamp,
       });
+      if (db) {
+        localLockRef = ref(db, `${roomBasePath}/locks/${localPlayer.characterId}`);
+        set(localLockRef, {
+          clientId,
+          ts: stamp,
+          acquiredAt: Number(prev?.acquiredAt) || stamp,
+        }).catch(() => {
+          syncState.rtc = "disconnected";
+        });
+      }
       upsertLocalPlayer();
     }
-    broadcastPresence();
-  }, 700);
+  }, 900);
 
   window.addEventListener("beforeunload", () => {
     releaseMyLock();
-    playersMap.delete(clientId);
-    broadcastPresence();
-    p2pRoom?.leave?.();
+    if (localPlayerRef) {
+      remove(localPlayerRef).catch(() => {});
+    }
   });
 }
 
