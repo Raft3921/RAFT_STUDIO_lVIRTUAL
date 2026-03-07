@@ -427,12 +427,52 @@ function showToast(text, durationMs = 1200) {
   uiState.toastUntil = performance.now() + durationMs;
 }
 
-async function copyInviteUrl() {
+function buildShareUrl() {
+  const url = new URL(window.location.href);
+  url.hash = roomId;
+  return url.toString();
+}
+
+function legacyCopyText(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  ta.style.top = "0";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
   try {
-    await navigator.clipboard.writeText(window.location.href);
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(ta);
+  return ok;
+}
+
+async function copyInviteUrl() {
+  const shareUrl = buildShareUrl();
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("招待URLをコピーしました");
+      return;
+    }
+    if (legacyCopyText(shareUrl)) {
+      showToast("招待URLをコピーしました");
+      return;
+    }
+    window.prompt("このURLをコピーしてください", shareUrl);
     showToast("招待URLをコピーしました");
   } catch {
-    showToast("コピーに失敗しました");
+    if (legacyCopyText(shareUrl)) {
+      showToast("招待URLをコピーしました");
+      return;
+    }
+    window.prompt("このURLをコピーしてください", shareUrl);
+    showToast("手動コピーしてください", 2000);
   }
 }
 
