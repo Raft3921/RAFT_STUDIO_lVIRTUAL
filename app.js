@@ -746,8 +746,8 @@ function drawSelectionUi() {
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillText(`ROOM ID: ${roomId}`, window.innerWidth / 2, 86);
-  const wsOnline = syncState.ws === "connected";
-  const rtcOnline = syncState.rtc === "connected" || (rtcProvider?.webrtcConns?.size || 0) > 0;
+  const wsOnline = Boolean(wsProvider?.wsconnected) || syncState.ws === "connected";
+  const rtcOnline = (rtcProvider?.webrtcConns?.size || 0) > 0 || syncState.rtc === "connected";
   const online = wsOnline || rtcOnline ? "ONLINE" : "CONNECTING";
   ctx.fillStyle = online === "ONLINE" ? "#7ef0a5" : "#ffd085";
   ctx.font = "bold 12px sans-serif";
@@ -1045,6 +1045,12 @@ function setupSync() {
   rtcProvider.on("status", (event) => {
     syncState.rtc = event.status;
   });
+  wsProvider.on("connection-close", () => {
+    syncState.ws = "disconnected";
+  });
+  wsProvider.on("connection-error", () => {
+    syncState.ws = "disconnected";
+  });
   playersMap = doc.getMap("players");
   locksMap = doc.getMap("locks");
 
@@ -1052,6 +1058,13 @@ function setupSync() {
     cleanupStalePlayers();
     cleanupStaleLocks();
     ensureLocalCharacterOwnership();
+
+    if (!wsProvider?.wsconnected && wsProvider?.shouldConnect !== false) {
+      wsProvider.connect();
+    }
+    if (rtcProvider && (rtcProvider.shouldConnect === false)) {
+      rtcProvider.connect();
+    }
 
     if (localPlayer.characterId) {
       locksMap.set(localPlayer.characterId, { clientId, ts: nowMs() });
