@@ -46,7 +46,6 @@ const localPlayer = {
 };
 
 const imageCache = new Map();
-const imageTransparencyCache = new Map();
 const cardViews = [];
 let doc;
 let provider;
@@ -91,81 +90,12 @@ function getImage(path) {
   return image;
 }
 
-function isImageTransparent(path, img) {
-  if (!img || !img.complete || img.naturalWidth <= 0) {
-    return false;
-  }
-  if (imageTransparencyCache.has(path)) {
-    return imageTransparencyCache.get(path);
-  }
-
-  const probe = document.createElement("canvas");
-  probe.width = img.naturalWidth;
-  probe.height = img.naturalHeight;
-  const pctx = probe.getContext("2d", { willReadFrequently: true });
-  if (!pctx) {
-    imageTransparencyCache.set(path, false);
-    return false;
-  }
-
-  pctx.drawImage(img, 0, 0);
-  const data = pctx.getImageData(0, 0, probe.width, probe.height).data;
-  let transparent = true;
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] !== 0) {
-      transparent = false;
-      break;
-    }
-  }
-  imageTransparencyCache.set(path, transparent);
-  return transparent;
-}
-
 function getSpriteImage(characterId, dir, moving, frame) {
   const base = `./assets/player/${characterId}`;
-  const frameSafe = frame === 2 ? 2 : 1;
-  const runToken = frame === 3 ? "run1" : frame === 4 ? "run2" : null;
-  const dirToken = dir === "left" || dir === "right" ? "side" : dir;
-  const candidates = [];
-
-  if (moving) {
-    if (runToken) {
-      candidates.push(`${base}/${dirToken}_${runToken}.png`);
-      if (dirToken === "side") {
-        candidates.push(`${base}/front_${runToken}.png`);
-        candidates.push(`${base}/back_${runToken}.png`);
-      }
-    } else {
-      candidates.push(`${base}/${dirToken}_idle1.png`);
-      if (dirToken === "side") {
-        candidates.push(`${base}/front_idle1.png`);
-        candidates.push(`${base}/back_idle1.png`);
-      }
-    }
-  } else {
-    candidates.push(`${base}/${dirToken}_idle${frameSafe}.png`);
-    if (dirToken === "side") {
-      candidates.push(`${base}/front_idle${frameSafe}.png`);
-      candidates.push(`${base}/back_idle${frameSafe}.png`);
-    }
-  }
-
-  let loadedFallback = null;
-  for (const path of candidates) {
-    const img = getImage(path);
-    if (img && img.complete && img.naturalWidth > 0) {
-      if (!isImageTransparent(path, img)) {
-        return img;
-      }
-      if (!loadedFallback) {
-        loadedFallback = img;
-      }
-    }
-    if (img === null) {
-      continue;
-    }
-  }
-  return loadedFallback;
+  const dirToken = dir === "left" || dir === "right" ? "front" : dir;
+  const action = moving && (frame === 3 || frame === 4) ? "run" : "idle";
+  const num = moving ? (frame === 4 ? 2 : 1) : (frame === 2 ? 2 : 1);
+  return getImage(`${base}/${dirToken}_${action}${num}.png`);
 }
 
 function nowMs() {
@@ -421,7 +351,8 @@ function drawActor(player, cameraX, cameraY) {
     : Math.floor(animClock * 5) % 2 === 0
       ? 1
       : 2;
-  const sprite = getSpriteImage(player.characterId, player.dir, player.moving, frame) || transparentSprite;
+  const sprite = getSpriteImage(player.characterId, player.dir, player.moving, frame);
+  const drawable = sprite && sprite.complete && sprite.naturalWidth > 0 ? sprite : transparentSprite;
 
   ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.beginPath();
@@ -432,9 +363,9 @@ function drawActor(player, cameraX, cameraY) {
   if (player.dir === "right") {
     ctx.translate(screenX + 32, screenY - 32);
     ctx.scale(-1, 1);
-    ctx.drawImage(sprite, 0, 0, 64, 64);
+    ctx.drawImage(drawable, 0, 0, 64, 64);
   } else {
-    ctx.drawImage(sprite, screenX - 32, screenY - 32, 64, 64);
+    ctx.drawImage(drawable, screenX - 32, screenY - 32, 64, 64);
   }
   ctx.restore();
 
