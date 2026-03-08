@@ -42,6 +42,7 @@ import {
   const mobileMoveButtons = Array.from(document.querySelectorAll("[data-move]"));
   const mobileSlotButtons = Array.from(document.querySelectorAll("[data-slot]"));
   const isTouchDevice = window.matchMedia("(pointer: coarse)").matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  let keyboardAttachedOnTouch = false;
   const FARM_ASSET_ROOT = new URL("./assets/", import.meta.url).toString();
   const ROOT_ASSET_ROOT = new URL("../../assets/", import.meta.url).toString();
   const SYNC_INTERVAL_MS = 80;
@@ -3644,12 +3645,13 @@ import {
     const s = 46 * uiScale;
     const pad = 10;
     const baseY = canvas.clientHeight - s * 3 - 96;
-    const leftX = pad;
+    const reversed = keyboardAttachedOnTouch;
+    const leftX = reversed ? (canvas.clientWidth - s * 3 - pad) : pad;
     state.touchHud.upRect = { x: leftX + s, y: baseY, w: s, h: s };
     state.touchHud.leftRect = { x: leftX, y: baseY + s, w: s, h: s };
     state.touchHud.rightRect = { x: leftX + s * 2, y: baseY + s, w: s, h: s };
     state.touchHud.downRect = { x: leftX + s, y: baseY + s * 2, w: s, h: s };
-    const rightX = canvas.clientWidth - s * 2 - pad;
+    const rightX = reversed ? pad : (canvas.clientWidth - s * 2 - pad);
     state.touchHud.zoomInRect = { x: rightX, y: baseY - s * 1.25, w: s * 2, h: s };
     state.touchHud.zoomOutRect = { x: rightX, y: baseY - s * 0.15, w: s * 2, h: s };
     state.touchHud.useRect = { x: rightX, y: baseY + s, w: s * 2, h: s };
@@ -5061,6 +5063,10 @@ import {
   }
 
   window.addEventListener("keydown", (event) => {
+    if (isTouchDevice) {
+      const key = String(event.key || "");
+      if (key && key !== "Unidentified") keyboardAttachedOnTouch = true;
+    }
     if (event.key === "F9") {
       forceClearAllCharacters();
       event.preventDefault();
