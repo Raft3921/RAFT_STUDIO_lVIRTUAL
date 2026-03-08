@@ -2,22 +2,22 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>ラフトバーチャル</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" />
-    <link rel="stylesheet" href="./style.css?v=20260308-anim1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>やんさん農業ゲーム</title>
+    <style>
+      :root { color-scheme: only light; }
+      html, body {
+        width: 100%; height: 100%; margin: 0; overflow: hidden; background: #1d2e17;
+      }
+      body { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+      canvas { width: 100vw; height: 100vh; display: block; cursor: none; }
+    </style>
   </head>
   <body>
-    <main id="app">
-      <section id="game-screen" class="screen active" aria-label="ゲーム画面">
-        <canvas id="game-canvas" width="960" height="540"></canvas>
-        <div id="joystick" class="joystick" aria-label="バーチャルスティック">
-          <div class="joystick-base"></div>
-          <div id="joystick-knob" class="joystick-knob"></div>
-        </div>
-      </section>
-    </main>
-
-    <script type="module" src="./app.js?v=20260308-anim1"></script>
+    <canvas id="game"></canvas>
+    <script src="./ソース/やんさん農業/tile.js"></script>
+    <script src="./ソース/やんさん農業/terrain.js"></script>
+    <script type="module" src="./ソース/やんさん農業/game.js"></script>
   </body>
 </html>

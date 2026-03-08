@@ -1,0 +1,2313 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Yansan Skin Editor</title>
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        --bg0: #081126;
+        --bg1: #12203c;
+        --bg2: #1d3158;
+        --line: #3f5f93;
+        --text: #e9f1ff;
+        --muted: #a9bddf;
+        --accent: #ff8b00;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: radial-gradient(circle at 20% 0%, #15294e 0, #0b1630 45%, #081126 100%); color: var(--text); font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+      .app { height: 100%; display: grid; grid-template-columns: 320px 1fr 340px; gap: 12px; padding: 12px; }
+      .panel { background: linear-gradient(180deg, rgba(18,31,58,.95), rgba(9,17,36,.95)); border: 1px solid var(--line); border-radius: 12px; padding: 10px; overflow: auto; }
+      .title { font-size: 13px; font-weight: 700; letter-spacing: .04em; color: #f4f7fa; margin: 6px 0 8px; }
+      .row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+      .row > * { min-width: 0; }
+      input[type="text"], button { height: 32px; border-radius: 8px; border: 1px solid #486ca8; background: #14284f; color: #f5f7fb; padding: 0 10px; }
+      button { cursor: pointer; }
+      button.primary { background: linear-gradient(180deg, #ff960f, #dc7300); border-color: #d66c00; font-weight: 700; }
+      button:disabled { opacity: .45; cursor: not-allowed; }
+      .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .name-row { display: grid; grid-template-columns: 1fr 36px; gap: 8px; }
+      .add-btn { font-size: 20px; font-weight: 700; line-height: 1; padding: 0; }
+      .item-list { max-height: 140px; overflow-y: auto; border: 1px solid #3f5f93; border-radius: 10px; padding: 6px; background: #0f1f3e; display: grid; gap: 6px; margin-bottom: 8px; }
+      .item-list.tall { max-height: 220px; }
+      .item-btn { width: 100%; text-align: left; height: 34px; border-radius: 8px; border: 1px solid #3f5f93; background: #14284f; color: #e9f1ff; padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .item-btn.asset { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px; }
+      .item-btn.asset img { width: 24px; height: 24px; image-rendering: pixelated; border: 1px solid #5a6a84; background: rgba(255,255,255,.04); flex: 0 0 auto; }
+      .item-btn.asset span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .item-btn.active { outline: 2px solid #a8d0ff; background: #25406f; }
+      .context-menu { position: fixed; z-index: 20; min-width: 132px; background: #0d1b37; border: 1px solid #4c70a8; border-radius: 8px; padding: 6px; display: none; box-shadow: 0 10px 22px rgba(0,0,0,.35); }
+      .context-menu.open { display: grid; gap: 6px; }
+      .context-menu button { width: 100%; height: 30px; text-align: left; }
+      .context-menu button.danger { border-color: #a84c4c; background: #5b2323; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .canvas-wrap { display: grid; place-items: center; background: #3f4147; border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: calc(100vh - 24px); }
+      .checker { position: relative; width: min(80vmin, 760px); aspect-ratio: 1; border: 1px solid #596171; border-radius: 12px; overflow: hidden; background:
+        linear-gradient(45deg, #ececec 25%, transparent 25%),
+        linear-gradient(-45deg, #ececec 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ececec 75%),
+        linear-gradient(-45deg, transparent 75%, #ececec 75%),
+        #ffffff;
+        background-size: 16px 16px;
+        background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      }
+      #paintCanvas { image-rendering: pixelated; width: 100%; height: 100%; display: block; cursor: crosshair; }
+      .toolbar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 8px 0; }
+      .palette { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+      .swatch { width: 100%; aspect-ratio: 1; border: 1px solid #6a7282; border-radius: 4px; cursor: pointer; }
+      .swatch.selected { outline: 2px solid #ffd26b; }
+      .swatch.transparent { background:
+        linear-gradient(45deg, #ddd 25%, transparent 25%),
+        linear-gradient(-45deg, #ddd 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ddd 75%),
+        linear-gradient(-45deg, transparent 75%, #ddd 75%),
+        #fff;
+        background-size: 8px 8px;
+        background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+      }
+      .picker-box { display: grid; grid-template-columns: 1fr 34px; gap: 8px; }
+      #svCanvas, #hueCanvas { border: 1px solid #596171; border-radius: 8px; image-rendering: pixelated; }
+      #svCanvas { width: 100%; height: 180px; }
+      #hueCanvas { width: 34px; height: 180px; }
+      .thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      .thumb { border: 1px solid #3f5f93; border-radius: 8px; padding: 4px; cursor: pointer; background: #14284f; }
+      .thumb.active { outline: 2px solid #ffd26b; }
+      .thumb canvas { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; background: rgba(255,255,255,.04); }
+      .status { font-size: 12px; color: #d5dde9; min-height: 18px; }
+      .small { font-size: 11px; color: #b6becb; }
+      .layers-wrap { display: none; }
+      .layer-head { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+      .layer-list { max-height: 70vh; overflow-y: auto; border: 1px solid #3f5f93; border-radius: 10px; background: #101b2f; }
+      .layer-row { display: grid; grid-template-columns: 30px 44px 1fr; gap: 8px; align-items: center; padding: 6px; border-bottom: 1px solid #2d3e5f; cursor: pointer; }
+      .layer-row:last-child { border-bottom: 0; }
+      .layer-row.active { background: #33496f; }
+      .layer-eye { width: 24px; height: 24px; border: 1px solid #516589; border-radius: 6px; background: #203659; color: #dce8ff; padding: 0; }
+      .layer-thumb { width: 40px; height: 40px; border: 1px solid #60708a; image-rendering: pixelated; background:
+        linear-gradient(45deg, #d9d9d9 25%, transparent 25%),
+        linear-gradient(-45deg, #d9d9d9 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #d9d9d9 75%),
+        linear-gradient(-45deg, transparent 75%, #d9d9d9 75%),
+        #ffffff;
+        background-size: 8px 8px;
+        background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+      }
+      .layer-name { font-size: 12px; color: #eaf2ff; line-height: 1.25; white-space: pre-line; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <section class="panel">
+        <div class="title">Skin Setup</div>
+        <div class="row split">
+          <button id="modeSkin" class="primary">Skin</button>
+          <button id="modeAssets">Assets</button>
+        </div>
+        <div class="row"><label class="small">アイテム(服)名</label></div>
+        <div class="name-row">
+          <input id="skinName" type="text" placeholder="new_skin_name" />
+          <button id="addSkin" class="add-btn" title="アイテム追加">+</button>
+        </div>
+        <div id="itemList" class="item-list"></div>
+        <div id="assetModeWrap" style="display:none">
+          <div class="title">Assets画像一覧</div>
+          <div id="assetList" class="item-list tall"></div>
+          <div class="row"><label class="small">新規画像パス(assets/配下)</label></div>
+          <input id="assetPath" type="text" placeholder="item/new_image.png" />
+          <div class="row split" style="margin-top:8px">
+            <input id="assetWidth" type="text" value="64" />
+            <input id="assetHeight" type="text" value="64" />
+          </div>
+          <div class="row split">
+            <button id="createAsset">新規作成</button>
+            <button id="resizeAsset">サイズ変更</button>
+          </div>
+        </div>
+        <div class="row split">
+          <button id="newSkin">空作成</button>
+          <button id="saveCurrent">保存</button>
+        </div>
+        <div class="row">
+          <button id="saveAll" class="primary">全保存</button>
+        </div>
+        <div class="row">
+          <button id="pickDir">保存先(file://)</button>
+        </div>
+
+        <div class="title">Tool</div>
+        <div class="toolbar">
+          <button id="toolPen" class="primary">ペン</button>
+          <button id="toolFill">塗</button>
+          <button id="toolErase">消</button>
+        </div>
+        <div class="row split">
+          <button id="undoBtn">戻す</button>
+          <button id="redoBtn">進む</button>
+        </div>
+        <div class="small">右クリック押下中はスポイト。透明を拾うと消しゴムに切替。</div>
+
+        <div class="title">Color Picker</div>
+        <div class="picker-box">
+          <canvas id="svCanvas" width="180" height="180"></canvas>
+          <canvas id="hueCanvas" width="34" height="180"></canvas>
+        </div>
+        <div class="row">
+          <input id="hexInput" type="text" value="#ff8b00" />
+          <button id="addFav">+</button>
+        </div>
+
+        <div class="title">カラーセット</div>
+        <div id="basePalette" class="palette"></div>
+        <div class="title">お気に入り</div>
+        <div id="favPalette" class="palette"></div>
+        <div class="title">このアイテムの色</div>
+        <div id="itemPalette" class="palette"></div>
+
+        <div class="title">Status</div>
+        <div id="status" class="status"></div>
+      </section>
+
+      <section class="canvas-wrap">
+        <div class="checker"><canvas id="paintCanvas" width="64" height="64"></canvas></div>
+      </section>
+
+      <section class="panel">
+        <div class="title" id="framesTitle">Frames (Yansan 全画像)</div>
+        <div id="frameInfo" class="small"></div>
+        <div id="thumbs" class="thumbs"></div>
+        <div id="layersWrap" class="layers-wrap">
+          <div class="layer-head">
+            <button id="addLayerBtn">+ レイヤー</button>
+            <button id="deleteLayerBtn">削除</button>
+          </div>
+          <div id="layerList" class="layer-list"></div>
+        </div>
+      </section>
+    </div>
+    <div id="itemContextMenu" class="context-menu">
+      <button id="menuDeleteSkin" class="danger">削除</button>
+      <button id="menuCancelSkin">止める</button>
+    </div>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const BASE_PALETTE = [
+          "#000000", "#ffffff", "#7f7f7f", "#c3c3c3", "#6b3f1f", "#b8753b", "#f5d29f", "#ffe07a", "#ff8b00", "#ff4b00",
+          "#cc1f1f", "#8f1212", "#ff6fae", "#ffb6d9", "#5328ff", "#3367ff", "#3aa8ff", "#20d4d6", "#18b253", "#0c7d33",
+        ];
+        const DEFAULT_FRAMES = [
+          "back_idle1", "back_idle2", "back_idle3", "back_run1", "back_run2",
+          "front_idle1", "front_idle2", "front_idle3", "front_run1", "front_run2",
+          "side_idle1", "side_idle2", "side_idle3", "side_run1", "side_run2",
+          "2side_idle1", "2side_idle2", "2side_idle3", "2side_run1", "2side_run2",
+        ];
+
+        const app = {
+          editorMode: "skin",
+          frames: [],
+          skins: [],
+          assetFiles: new Set(),
+          assetPaths: [],
+          skinName: "",
+          currentFrame: "",
+          currentAssetPath: "",
+          layerMap: new Map(),
+          assetDocMap: new Map(),
+          undoMap: new Map(),
+          redoMap: new Map(),
+          assetUndoMap: new Map(),
+          assetRedoMap: new Map(),
+          tool: "pen",
+          prevTool: "pen",
+          eyedropTemp: false,
+          eyedropTransparentHit: false,
+          selectedColor: { r: 255, g: 139, b: 0, a: 255 },
+          hsv: { h: 33, s: 100, v: 100 },
+          favorites: [],
+          itemColors: [],
+          mouseDown: false,
+          loaded: false,
+          offlineMode: false,
+          outputRootHandle: null,
+          selectionAll: false,
+          clipboardLayer: null,
+          contextMenuSkin: "",
+          skinDrafts: new Map(),
+          skinDeleteUndoStack: [],
+          skinDeleteRedoStack: [],
+          moveDrag: false,
+          moveStartPixel: null,
+          moveSnapshot: null,
+        };
+        const HANDLE_DB_NAME = "yansan_skin_editor_handles_v1";
+        const HANDLE_STORE_NAME = "handles";
+        const HANDLE_KEY_OUTPUT_ROOT = "outputRootHandle";
+        const FAVORITES_STORAGE_KEY = "yansan_skin_editor_favorites_v1";
+
+        const els = {
+          itemList: document.getElementById("itemList"),
+          assetModeWrap: document.getElementById("assetModeWrap"),
+          assetList: document.getElementById("assetList"),
+          assetPath: document.getElementById("assetPath"),
+          assetWidth: document.getElementById("assetWidth"),
+          assetHeight: document.getElementById("assetHeight"),
+          createAsset: document.getElementById("createAsset"),
+          resizeAsset: document.getElementById("resizeAsset"),
+          modeSkin: document.getElementById("modeSkin"),
+          modeAssets: document.getElementById("modeAssets"),
+          skinName: document.getElementById("skinName"),
+          addSkin: document.getElementById("addSkin"),
+          newSkin: document.getElementById("newSkin"),
+          saveCurrent: document.getElementById("saveCurrent"),
+          saveAll: document.getElementById("saveAll"),
+          pickDir: document.getElementById("pickDir"),
+          toolPen: document.getElementById("toolPen"),
+          toolFill: document.getElementById("toolFill"),
+          toolErase: document.getElementById("toolErase"),
+          undoBtn: document.getElementById("undoBtn"),
+          redoBtn: document.getElementById("redoBtn"),
+          addFav: document.getElementById("addFav"),
+          hexInput: document.getElementById("hexInput"),
+          svCanvas: document.getElementById("svCanvas"),
+          hueCanvas: document.getElementById("hueCanvas"),
+          paintCanvas: document.getElementById("paintCanvas"),
+          basePalette: document.getElementById("basePalette"),
+          favPalette: document.getElementById("favPalette"),
+          itemPalette: document.getElementById("itemPalette"),
+          thumbs: document.getElementById("thumbs"),
+          layersWrap: document.getElementById("layersWrap"),
+          addLayerBtn: document.getElementById("addLayerBtn"),
+          deleteLayerBtn: document.getElementById("deleteLayerBtn"),
+          layerList: document.getElementById("layerList"),
+          framesTitle: document.getElementById("framesTitle"),
+          frameInfo: document.getElementById("frameInfo"),
+          status: document.getElementById("status"),
+          itemContextMenu: document.getElementById("itemContextMenu"),
+          menuDeleteSkin: document.getElementById("menuDeleteSkin"),
+          menuCancelSkin: document.getElementById("menuCancelSkin"),
+        };
+
+        const paintCtx = els.paintCanvas.getContext("2d", { willReadFrequently: true });
+        const svCtx = els.svCanvas.getContext("2d");
+        const hueCtx = els.hueCanvas.getContext("2d");
+        paintCtx.imageSmoothingEnabled = false;
+
+        function setStatus(msg) { els.status.textContent = msg; }
+        function loadFavoritesFromStorage() {
+          try {
+            const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return;
+            const normalized = parsed
+              .map((c) => String(c || "").trim().toLowerCase())
+              .filter((c) => /^#[0-9a-f]{6}$/.test(c));
+            app.favorites = [...new Set(normalized)].slice(0, 40);
+          } catch (_) {}
+        }
+        function saveFavoritesToStorage() {
+          try {
+            localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(app.favorites));
+          } catch (_) {}
+        }
+        function setTool(nextTool) {
+          app.eyedropTemp = false;
+          app.eyedropTransparentHit = false;
+          app.tool = nextTool;
+          renderPalettes();
+        }
+        function refreshToolUI() {
+          const isPen = app.tool === "pen";
+          const isFill = app.tool === "fill";
+          const isErase = app.tool === "erase";
+          els.toolPen.classList.toggle("primary", isPen);
+          els.toolFill.classList.toggle("primary", isFill);
+          els.toolErase.classList.toggle("primary", isErase);
+          if (app.eyedropTemp || app.tool === "eyedrop") {
+            els.paintCanvas.style.cursor = "copy";
+            return;
+          }
+          if (app.moveDrag) {
+            els.paintCanvas.style.cursor = "grabbing";
+            return;
+          }
+          if (isErase) {
+            els.paintCanvas.style.cursor = "cell";
+            return;
+          }
+          if (isFill) {
+            els.paintCanvas.style.cursor = "alias";
+            return;
+          }
+          els.paintCanvas.style.cursor = "crosshair";
+        }
+
+        function getCurrentSize() {
+          if (app.editorMode === "assets") {
+            const doc = app.assetDocMap.get(app.currentAssetPath);
+            if (doc && Number.isFinite(doc.w) && Number.isFinite(doc.h)) {
+              return { w: Math.max(1, Math.floor(doc.w)), h: Math.max(1, Math.floor(doc.h)) };
+            }
+          }
+          return { w: 64, h: 64 };
+        }
+
+        function resizePaintCanvas(w, h) {
+          const width = Math.max(1, Math.floor(Number(w) || 64));
+          const height = Math.max(1, Math.floor(Number(h) || 64));
+          els.paintCanvas.width = width;
+          els.paintCanvas.height = height;
+          paintCtx.imageSmoothingEnabled = false;
+          els.assetWidth.value = String(width);
+          els.assetHeight.value = String(height);
+        }
+
+        function getActiveLayerMap() {
+          return app.layerMap;
+        }
+
+        function getActiveUndoMap() {
+          return app.editorMode === "assets" ? app.assetUndoMap : app.undoMap;
+        }
+
+        function getActiveRedoMap() {
+          return app.editorMode === "assets" ? app.assetRedoMap : app.redoMap;
+        }
+
+        function getCurrentKey() {
+          return app.editorMode === "assets" ? app.currentAssetPath : app.currentFrame;
+        }
+
+        function setEditorMode(mode) {
+          app.editorMode = mode === "assets" ? "assets" : "skin";
+          const isSkin = app.editorMode === "skin";
+          els.modeSkin.classList.toggle("primary", isSkin);
+          els.modeAssets.classList.toggle("primary", !isSkin);
+          els.itemList.style.display = isSkin ? "grid" : "none";
+          els.skinName.style.display = isSkin ? "" : "none";
+          els.addSkin.style.display = isSkin ? "" : "none";
+          els.newSkin.style.display = isSkin ? "" : "none";
+          els.assetModeWrap.style.display = isSkin ? "none" : "block";
+          els.framesTitle.textContent = isSkin ? "Frames (Yansan 全画像)" : "Assets Editor";
+          els.thumbs.style.display = isSkin ? "grid" : "none";
+          els.layersWrap.style.display = isSkin ? "none" : "block";
+          if (isSkin) {
+            resizePaintCanvas(64, 64);
+            redrawMain();
+          } else if (app.currentAssetPath) {
+            const size = getCurrentSize();
+            resizePaintCanvas(size.w, size.h);
+            redrawMain();
+          }
+        }
+
+        function createAssetLayerPixels(w, h, sourcePixels = null) {
+          const px = createEmptyLayer(w, h);
+          if (sourcePixels) px.set(sourcePixels.subarray(0, px.length));
+          return px;
+        }
+
+        function createAssetDoc(w, h, basePixels = null) {
+          const width = Math.max(1, Math.floor(Number(w) || 64));
+          const height = Math.max(1, Math.floor(Number(h) || 64));
+          return {
+            w: width,
+            h: height,
+            layers: [
+              {
+                id: 1,
+                name: "レイヤー1",
+                visible: true,
+                pixels: createAssetLayerPixels(width, height, basePixels),
+              },
+            ],
+            activeLayerId: 1,
+            nextLayerId: 2,
+          };
+        }
+
+        function cloneAssetDoc(doc) {
+          return {
+            w: doc.w,
+            h: doc.h,
+            activeLayerId: doc.activeLayerId,
+            nextLayerId: doc.nextLayerId,
+            layers: doc.layers.map((l) => ({
+              id: l.id,
+              name: l.name,
+              visible: l.visible !== false,
+              pixels: new Uint8ClampedArray(l.pixels),
+            })),
+          };
+        }
+
+        function getCurrentAssetDoc() {
+          if (app.editorMode !== "assets") return null;
+          return app.assetDocMap.get(app.currentAssetPath) || null;
+        }
+
+        function getActiveAssetLayer(doc = getCurrentAssetDoc()) {
+          if (!doc) return null;
+          let layer = doc.layers.find((l) => l.id === doc.activeLayerId) || null;
+          if (!layer && doc.layers.length) {
+            doc.activeLayerId = doc.layers[doc.layers.length - 1].id;
+            layer = doc.layers[doc.layers.length - 1];
+          }
+          return layer;
+        }
+
+        function pushAssetUndo(path) {
+          const key = String(path || app.currentAssetPath || "");
+          if (!key) return;
+          const doc = app.assetDocMap.get(key);
+          if (!doc) return;
+          const u = app.assetUndoMap.get(key) || [];
+          u.push(cloneAssetDoc(doc));
+          if (u.length > 80) u.shift();
+          app.assetUndoMap.set(key, u);
+          app.assetRedoMap.set(key, []);
+        }
+
+        function compositeAssetDoc(doc) {
+          const out = createEmptyLayer(doc.w, doc.h);
+          for (const layer of doc.layers) {
+            if (!layer || layer.visible === false) continue;
+            const src = layer.pixels;
+            for (let i = 0; i < out.length; i += 4) {
+              const sa = src[i + 3] / 255;
+              if (sa <= 0) continue;
+              const da = out[i + 3] / 255;
+              const oa = sa + da * (1 - sa);
+              if (oa <= 0) continue;
+              out[i] = Math.round((src[i] * sa + out[i] * da * (1 - sa)) / oa);
+              out[i + 1] = Math.round((src[i + 1] * sa + out[i + 1] * da * (1 - sa)) / oa);
+              out[i + 2] = Math.round((src[i + 2] * sa + out[i + 2] * da * (1 - sa)) / oa);
+              out[i + 3] = Math.round(oa * 255);
+            }
+          }
+          return out;
+        }
+
+        function normalizeBaseFrameName(name) {
+          const n = String(name || "").trim();
+          if (n.startsWith("2side_")) return n.slice(1);
+          return n;
+        }
+        function frameNameToPath(name) {
+          const base = normalizeBaseFrameName(name);
+          return `assets/yansan/${base}.png`;
+        }
+        function expandFramesWith2Side(frames) {
+          const out = [];
+          (frames || []).forEach((f) => {
+            const name = String(f || "").trim();
+            if (!name) return;
+            if (!out.includes(name)) out.push(name);
+            if (name.startsWith("side_")) {
+              const two = `2${name}`;
+              if (!out.includes(two)) out.push(two);
+            }
+          });
+          return out;
+        }
+        function skinFramePath(skin, frame) { return `assets/skin/${skin}/${frame}.png`; }
+        function hasAsset(path) {
+          const p = String(path || "").replace(/^\.\//, "");
+          const k = p.startsWith("assets/") ? p : `assets/${p}`;
+          return app.assetFiles.has(k);
+        }
+
+        function rgbaToHex(c) {
+          const h = (n) => n.toString(16).padStart(2, "0");
+          return `#${h(c.r)}${h(c.g)}${h(c.b)}`;
+        }
+
+        function hexToRgb(hex) {
+          const s = hex.trim().replace("#", "");
+          if (!/^[0-9a-fA-F]{6}$/.test(s)) return null;
+          return {
+            r: parseInt(s.slice(0, 2), 16),
+            g: parseInt(s.slice(2, 4), 16),
+            b: parseInt(s.slice(4, 6), 16),
+            a: 255,
+          };
+        }
+
+        function rgbToHsv(r, g, b) {
+          const R = r / 255, G = g / 255, B = b / 255;
+          const max = Math.max(R, G, B), min = Math.min(R, G, B);
+          const d = max - min;
+          let h = 0;
+          if (d !== 0) {
+            if (max === R) h = ((G - B) / d) % 6;
+            else if (max === G) h = (B - R) / d + 2;
+            else h = (R - G) / d + 4;
+          }
+          h = Math.round(h * 60);
+          if (h < 0) h += 360;
+          const s = max === 0 ? 0 : d / max;
+          const v = max;
+          return { h, s: Math.round(s * 100), v: Math.round(v * 100) };
+        }
+
+        function hsvToRgb(h, s, v) {
+          const S = s / 100, V = v / 100;
+          const c = V * S;
+          const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+          const m = V - c;
+          let r = 0, g = 0, b = 0;
+          if (h < 60) [r, g, b] = [c, x, 0];
+          else if (h < 120) [r, g, b] = [x, c, 0];
+          else if (h < 180) [r, g, b] = [0, c, x];
+          else if (h < 240) [r, g, b] = [0, x, c];
+          else if (h < 300) [r, g, b] = [x, 0, c];
+          else [r, g, b] = [c, 0, x];
+          return {
+            r: Math.round((r + m) * 255),
+            g: Math.round((g + m) * 255),
+            b: Math.round((b + m) * 255),
+            a: 255,
+          };
+        }
+
+        async function fetchBootstrap() {
+          const res = await fetch("/api/bootstrap");
+          if (!res.ok) throw new Error("bootstrap failed");
+          return res.json();
+        }
+
+        function openHandleDb() {
+          return new Promise((resolve, reject) => {
+            if (!window.indexedDB) {
+              reject(new Error("indexedDB not available"));
+              return;
+            }
+            const req = indexedDB.open(HANDLE_DB_NAME, 1);
+            req.onupgradeneeded = () => {
+              const db = req.result;
+              if (!db.objectStoreNames.contains(HANDLE_STORE_NAME)) db.createObjectStore(HANDLE_STORE_NAME);
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error || new Error("db open failed"));
+          });
+        }
+
+        async function saveOutputRootHandleToDb(handle) {
+          if (!handle) return;
+          try {
+            const db = await openHandleDb();
+            await new Promise((resolve, reject) => {
+              const tx = db.transaction(HANDLE_STORE_NAME, "readwrite");
+              tx.objectStore(HANDLE_STORE_NAME).put(handle, HANDLE_KEY_OUTPUT_ROOT);
+              tx.oncomplete = () => resolve();
+              tx.onerror = () => reject(tx.error || new Error("db write failed"));
+              tx.onabort = () => reject(tx.error || new Error("db write aborted"));
+            });
+            db.close();
+          } catch (_) {}
+        }
+
+        async function loadOutputRootHandleFromDb() {
+          try {
+            const db = await openHandleDb();
+            const handle = await new Promise((resolve, reject) => {
+              const tx = db.transaction(HANDLE_STORE_NAME, "readonly");
+              const req = tx.objectStore(HANDLE_STORE_NAME).get(HANDLE_KEY_OUTPUT_ROOT);
+              req.onsuccess = () => resolve(req.result || null);
+              req.onerror = () => reject(req.error || new Error("db read failed"));
+            });
+            db.close();
+            return handle;
+          } catch (_) {
+            return null;
+          }
+        }
+
+        async function resolveAssetsRootHandle(rootHandle, create) {
+          if (!rootHandle || typeof rootHandle.getDirectoryHandle !== "function") return null;
+          const shouldCreate = !!create;
+          if (String(rootHandle.name || "").toLowerCase() === "assets") return rootHandle;
+          try {
+            return await rootHandle.getDirectoryHandle("assets", shouldCreate ? { create: true } : undefined);
+          } catch (_) {
+            return null;
+          }
+        }
+
+        async function listSkinFoldersFromHandle(rootHandle) {
+          const out = [];
+          try {
+            const assetsRoot = await resolveAssetsRootHandle(rootHandle, false);
+            if (!assetsRoot) return out;
+            const skinRoot = await assetsRoot.getDirectoryHandle("skin");
+            for await (const [name, handle] of skinRoot.entries()) {
+              if (handle && handle.kind === "directory") out.push(name);
+            }
+          } catch (_) {}
+          out.sort();
+          return out;
+        }
+
+        async function listAssetPngFilesFromHandle(rootHandle) {
+          const out = [];
+          try {
+            const assetsRoot = await resolveAssetsRootHandle(rootHandle, false);
+            if (!assetsRoot) return out;
+            async function walk(dir, prefix) {
+              for await (const [name, handle] of dir.entries()) {
+                if (handle.kind === "directory") {
+                  // eslint-disable-next-line no-await-in-loop
+                  await walk(handle, `${prefix}${name}/`);
+                  continue;
+                }
+                if (!String(name).toLowerCase().endsWith(".png")) continue;
+                out.push(`assets/${prefix}${name}`);
+              }
+            }
+            await walk(assetsRoot, "");
+          } catch (_) {}
+          out.sort((a, b) => a.localeCompare(b, "ja"));
+          return out;
+        }
+
+        function rebuildSkinSelect() {
+          els.itemList.innerHTML = "";
+          app.skins.forEach((s) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "item-btn" + (s === app.skinName ? " active" : "");
+            b.textContent = s;
+            b.title = s;
+            b.addEventListener("click", async () => {
+              const prev = app.skinName;
+              app.skinName = s;
+              els.skinName.value = s;
+              rebuildSkinSelect();
+              await loadSkinFrames(s, prev);
+            });
+            b.addEventListener("contextmenu", (ev) => {
+              ev.preventDefault();
+              showItemContextMenu(s, ev.clientX, ev.clientY);
+            });
+            els.itemList.appendChild(b);
+          });
+        }
+
+        function rebuildAssetList() {
+          els.assetList.innerHTML = "";
+          app.assetPaths.forEach((path) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "item-btn asset" + (path === app.currentAssetPath ? " active" : "");
+            b.title = path;
+            const icon = document.createElement("img");
+            icon.src = `${path}?v=${Date.now()}`;
+            icon.alt = "";
+            const label = document.createElement("span");
+            label.textContent = path.replace(/^assets\//, "");
+            b.appendChild(icon);
+            b.appendChild(label);
+            b.addEventListener("click", async () => {
+              await openAssetForEdit(path);
+            });
+            els.assetList.appendChild(b);
+          });
+        }
+
+        function renderLayerList() {
+          if (app.editorMode !== "assets") {
+            els.layerList.innerHTML = "";
+            return;
+          }
+          const doc = getCurrentAssetDoc();
+          if (!doc) {
+            els.layerList.innerHTML = "";
+            return;
+          }
+          els.layerList.innerHTML = "";
+          for (let i = doc.layers.length - 1; i >= 0; i -= 1) {
+            const layer = doc.layers[i];
+            const row = document.createElement("div");
+            row.className = "layer-row" + (layer.id === doc.activeLayerId ? " active" : "");
+            const eye = document.createElement("button");
+            eye.type = "button";
+            eye.className = "layer-eye";
+            eye.textContent = layer.visible === false ? "◌" : "◉";
+            eye.title = layer.visible === false ? "非表示" : "表示";
+            eye.addEventListener("click", async (ev) => {
+              ev.stopPropagation();
+              pushAssetUndo(app.currentAssetPath);
+              layer.visible = layer.visible === false;
+              await redrawMain();
+            });
+            const thumb = document.createElement("canvas");
+            thumb.className = "layer-thumb";
+            thumb.width = doc.w;
+            thumb.height = doc.h;
+            const tctx = thumb.getContext("2d");
+            tctx.putImageData(new ImageData(new Uint8ClampedArray(layer.pixels), doc.w, doc.h), 0, 0);
+            const label = document.createElement("div");
+            label.className = "layer-name";
+            label.textContent = `100% 通常\n${layer.name}`;
+            row.appendChild(eye);
+            row.appendChild(thumb);
+            row.appendChild(label);
+            row.addEventListener("click", () => {
+              doc.activeLayerId = layer.id;
+              renderLayerList();
+            });
+            els.layerList.appendChild(row);
+          }
+        }
+
+        function hideItemContextMenu() {
+          app.contextMenuSkin = "";
+          els.itemContextMenu.classList.remove("open");
+        }
+
+        function showItemContextMenu(skinName, clientX, clientY) {
+          app.contextMenuSkin = skinName;
+          const m = els.itemContextMenu;
+          m.classList.add("open");
+          const w = 132;
+          const h = 76;
+          const x = Math.max(8, Math.min(window.innerWidth - w - 8, clientX));
+          const y = Math.max(8, Math.min(window.innerHeight - h - 8, clientY));
+          m.style.left = `${x}px`;
+          m.style.top = `${y}px`;
+        }
+
+        async function deleteSkinByName(skinName) {
+          const name = String(skinName || "").trim();
+          if (!name) return;
+          const record = buildDeleteRecord(name);
+          await applyDeleteRecord(record, true);
+        }
+
+        async function tryRestoreOutputRootHandle() {
+          if (!window.showDirectoryPicker || !window.FileSystemHandle) return false;
+          const saved = await loadOutputRootHandleFromDb();
+          if (!saved) return false;
+          try {
+            let perm = "prompt";
+            if (typeof saved.queryPermission === "function") {
+              perm = await saved.queryPermission({ mode: "readwrite" });
+            }
+            if (perm !== "granted" && typeof saved.requestPermission === "function") {
+              perm = await saved.requestPermission({ mode: "readwrite" });
+            }
+            if (perm !== "granted") return false;
+            const assetsRoot = await resolveAssetsRootHandle(saved, false);
+            if (!assetsRoot) return false;
+            app.outputRootHandle = assetsRoot;
+            const skins = await listSkinFoldersFromHandle(assetsRoot);
+            app.skins = [...new Set([...app.skins, ...skins])].sort();
+            rebuildSkinSelect();
+            await refreshAssetPaths();
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        async function chooseOutputRoot() {
+          if (typeof window.showDirectoryPicker !== "function") {
+            setStatus("このブラウザでは保存先選択APIが使えません");
+            return;
+          }
+          try {
+            const picked = await window.showDirectoryPicker({ mode: "readwrite" });
+            const assetsRoot = await resolveAssetsRootHandle(picked, false);
+            if (!assetsRoot) {
+              setStatus("assetsフォルダ（またはassetsを含む親）を選択してください");
+              return;
+            }
+            app.outputRootHandle = assetsRoot;
+            await saveOutputRootHandleToDb(assetsRoot);
+            const skins = await listSkinFoldersFromHandle(assetsRoot);
+            app.skins = [...new Set([...app.skins, ...skins])].sort();
+            rebuildSkinSelect();
+            await refreshAssetPaths();
+            els.saveCurrent.disabled = false;
+            els.saveAll.disabled = false;
+            setStatus("保存先を紐付けました");
+          } catch (err) {
+            setStatus(`保存先選択をキャンセル: ${err.message || err}`);
+          }
+        }
+
+        async function loadLayerFromHandle(rootHandle, skinName, frameName) {
+          try {
+            const assetsRoot = await resolveAssetsRootHandle(rootHandle, false);
+            if (!assetsRoot) return createEmptyLayer();
+            const skinRoot = await assetsRoot.getDirectoryHandle("skin");
+            const skinDir = await skinRoot.getDirectoryHandle(skinName);
+            const fileHandle = await skinDir.getFileHandle(`${frameName}.png`);
+            const file = await fileHandle.getFile();
+            const bitmap = await createImageBitmap(file);
+            const c = document.createElement("canvas");
+            c.width = 64;
+            c.height = 64;
+            const cx = c.getContext("2d", { willReadFrequently: true });
+            cx.clearRect(0, 0, 64, 64);
+            cx.drawImage(bitmap, 0, 0, 64, 64);
+            if (typeof bitmap.close === "function") bitmap.close();
+            return new Uint8ClampedArray(cx.getImageData(0, 0, 64, 64).data);
+          } catch (_) {
+            return createEmptyLayer();
+          }
+        }
+
+        async function saveFrameToHandle(rootHandle, skinName, frameName, dataUrl) {
+          const assetsRoot = await resolveAssetsRootHandle(rootHandle, true);
+          if (!assetsRoot) throw new Error("assetsフォルダが見つかりません");
+          const skinRoot = await assetsRoot.getDirectoryHandle("skin", { create: true });
+          const skinDir = await skinRoot.getDirectoryHandle(skinName, { create: true });
+          const fileHandle = await skinDir.getFileHandle(`${frameName}.png`, { create: true });
+          const writable = await fileHandle.createWritable();
+          const b64 = dataUrl.slice("data:image/png;base64,".length);
+          const buf = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          await writable.write(buf);
+          await writable.close();
+        }
+
+        async function getFileHandleByAssetPath(rootHandle, assetPath, createIfMissing = false) {
+          const assetsRoot = await resolveAssetsRootHandle(rootHandle, true);
+          if (!assetsRoot) throw new Error("assetsフォルダが見つかりません");
+          const clean = String(assetPath || "").replace(/^\.\//, "").replace(/^assets\//, "");
+          if (!clean || !clean.endsWith(".png")) throw new Error("pngパスを指定してください");
+          const parts = clean.split("/").filter(Boolean);
+          let dir = assetsRoot;
+          for (let i = 0; i < parts.length - 1; i += 1) {
+            dir = await dir.getDirectoryHandle(parts[i], { create: createIfMissing });
+          }
+          return dir.getFileHandle(parts[parts.length - 1], { create: createIfMissing });
+        }
+
+        async function loadAssetFromHandle(rootHandle, assetPath) {
+          const fileHandle = await getFileHandleByAssetPath(rootHandle, assetPath, false);
+          const file = await fileHandle.getFile();
+          const bitmap = await createImageBitmap(file);
+          const w = Math.max(1, bitmap.width);
+          const h = Math.max(1, bitmap.height);
+          const c = document.createElement("canvas");
+          c.width = w;
+          c.height = h;
+          const cx = c.getContext("2d", { willReadFrequently: true });
+          cx.clearRect(0, 0, w, h);
+          cx.drawImage(bitmap, 0, 0, w, h);
+          if (typeof bitmap.close === "function") bitmap.close();
+          return {
+            w,
+            h,
+            data: new Uint8ClampedArray(cx.getImageData(0, 0, w, h).data),
+          };
+        }
+
+        function loadAssetFromPath(assetPath) {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.src = `${assetPath}?v=${Date.now()}`;
+            img.onload = () => {
+              const w = Math.max(1, img.naturalWidth || 1);
+              const h = Math.max(1, img.naturalHeight || 1);
+              const c = document.createElement("canvas");
+              c.width = w;
+              c.height = h;
+              const cx = c.getContext("2d", { willReadFrequently: true });
+              cx.clearRect(0, 0, w, h);
+              cx.drawImage(img, 0, 0, w, h);
+              resolve({
+                w,
+                h,
+                data: new Uint8ClampedArray(cx.getImageData(0, 0, w, h).data),
+              });
+            };
+            img.onerror = () => resolve({ w: 64, h: 64, data: createEmptyLayer(64, 64) });
+          });
+        }
+
+        async function saveAssetToHandle(rootHandle, assetPath, dataUrl) {
+          const fileHandle = await getFileHandleByAssetPath(rootHandle, assetPath, true);
+          const writable = await fileHandle.createWritable();
+          const b64 = dataUrl.slice("data:image/png;base64,".length);
+          const buf = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          await writable.write(buf);
+          await writable.close();
+        }
+
+        function offlineBootstrap() {
+          const assetFiles = new Set();
+          DEFAULT_FRAMES.forEach((f) => {
+            assetFiles.add(`assets/yansan/${normalizeBaseFrameName(f)}.png`);
+          });
+          assetFiles.add("assets/sickle.png");
+          return {
+            frames: [...DEFAULT_FRAMES],
+            skins: [],
+            assetFiles: [...assetFiles],
+          };
+        }
+
+        function createEmptyLayer(w = 64, h = 64) {
+          const width = Math.max(1, Math.floor(Number(w) || 64));
+          const height = Math.max(1, Math.floor(Number(h) || 64));
+          return new Uint8ClampedArray(width * height * 4);
+        }
+
+        function pushUndo(key) {
+          if (app.editorMode === "assets") {
+            pushAssetUndo(key);
+            return;
+          }
+          const undoMap = getActiveUndoMap();
+          const layerMap = getActiveLayerMap();
+          const u = undoMap.get(key) || [];
+          const layer = layerMap.get(key) || createEmptyLayer(getCurrentSize().w, getCurrentSize().h);
+          u.push(new Uint8ClampedArray(layer));
+          if (u.length > 40) u.shift();
+          undoMap.set(key, u);
+          getActiveRedoMap().set(key, []);
+        }
+
+        function readPixel(layer, x, y) {
+          const { w } = getCurrentSize();
+          const i = (y * w + x) * 4;
+          return { r: layer[i], g: layer[i + 1], b: layer[i + 2], a: layer[i + 3] };
+        }
+
+        function writePixel(layer, x, y, c) {
+          const { w } = getCurrentSize();
+          const i = (y * w + x) * 4;
+          layer[i] = c.r;
+          layer[i + 1] = c.g;
+          layer[i + 2] = c.b;
+          layer[i + 3] = c.a;
+        }
+
+        function sameColor(a, b) {
+          return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
+        }
+
+        function floodFill(layer, sx, sy, color) {
+          const { w, h } = getCurrentSize();
+          if (sx < 0 || sy < 0 || sx >= w || sy >= h) return;
+          const target = readPixel(layer, sx, sy);
+          if (sameColor(target, color)) return;
+          const q = [[sx, sy]];
+          const seen = new Uint8Array(w * h);
+          while (q.length) {
+            const [x, y] = q.pop();
+            const idx = y * w + x;
+            if (seen[idx]) continue;
+            seen[idx] = 1;
+            const current = readPixel(layer, x, y);
+            if (!sameColor(current, target)) continue;
+            writePixel(layer, x, y, color);
+            if (x > 0) q.push([x - 1, y]);
+            if (x < w - 1) q.push([x + 1, y]);
+            if (y > 0) q.push([x, y - 1]);
+            if (y < h - 1) q.push([x, y + 1]);
+          }
+        }
+
+        function currentLayer() {
+          if (app.editorMode === "assets") {
+            const doc = getCurrentAssetDoc();
+            const active = getActiveAssetLayer(doc);
+            if (active) return active.pixels;
+            const size = getCurrentSize();
+            return createEmptyLayer(size.w, size.h);
+          }
+          const key = getCurrentKey();
+          const map = getActiveLayerMap();
+          if (!map.has(key)) {
+            const { w, h } = getCurrentSize();
+            map.set(key, createEmptyLayer(w, h));
+          }
+          return map.get(key);
+        }
+
+        function cloneLayerMap(srcMap) {
+          const out = new Map();
+          for (const frame of app.frames) {
+            const layer = (srcMap && srcMap.get(frame)) || createEmptyLayer();
+            out.set(frame, new Uint8ClampedArray(layer));
+          }
+          return out;
+        }
+
+        function saveCurrentSkinDraft() {
+          const name = String(app.skinName || "").trim();
+          if (!name || !app.frames.length) return;
+          app.skinDrafts.set(name, cloneLayerMap(app.layerMap));
+        }
+
+        function mapToSerializableLayers(layerMap) {
+          const out = {};
+          for (const frame of app.frames) {
+            const layer = (layerMap && layerMap.get(frame)) || createEmptyLayer();
+            out[frame] = new Uint8ClampedArray(layer);
+          }
+          return out;
+        }
+
+        function serializableLayersToMap(obj) {
+          const out = new Map();
+          for (const frame of app.frames) {
+            const layer = (obj && obj[frame]) || createEmptyLayer();
+            out.set(frame, new Uint8ClampedArray(layer));
+          }
+          return out;
+        }
+
+        function layerDataToPngDataUrl(layer) {
+          const c = document.createElement("canvas");
+          c.width = 64;
+          c.height = 64;
+          const cx = c.getContext("2d");
+          cx.putImageData(new ImageData(new Uint8ClampedArray(layer), 64, 64), 0, 0);
+          return c.toDataURL("image/png");
+        }
+
+        async function writeSkinFolderFromRecord(record) {
+          if (!app.offlineMode || !app.outputRootHandle) return;
+          if (!record || !record.layers) return;
+          const skinName = String(record.name || "").trim();
+          if (!skinName) return;
+          for (const frame of app.frames) {
+            const layer = record.layers[frame] || createEmptyLayer();
+            const dataUrl = layerDataToPngDataUrl(layer);
+            // eslint-disable-next-line no-await-in-loop
+            await saveFrameToHandle(app.outputRootHandle, skinName, frame, dataUrl);
+          }
+        }
+
+        async function removeSkinFolderIfPossible(skinName) {
+          if (!app.offlineMode || !app.outputRootHandle) return false;
+          try {
+            const assetsRoot = await resolveAssetsRootHandle(app.outputRootHandle, false);
+            if (!assetsRoot) return false;
+            const skinRoot = await assetsRoot.getDirectoryHandle("skin");
+            await skinRoot.removeEntry(skinName, { recursive: true });
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        function buildDeleteRecord(skinName) {
+          const name = String(skinName || "").trim();
+          const index = app.skins.indexOf(name);
+          const draft = app.skinDrafts.get(name);
+          return {
+            type: "delete_skin",
+            name,
+            index: index < 0 ? app.skins.length : index,
+            wasActive: app.skinName === name,
+            prevActive: app.skinName,
+            layers: draft ? mapToSerializableLayers(draft) : null,
+            removedOnDisk: false,
+          };
+        }
+
+        async function applyDeleteRecord(record, pushUndo) {
+          if (!record || !record.name) return false;
+          const beforeActive = app.skinName;
+          saveCurrentSkinDraft();
+          record.removedOnDisk = await removeSkinFolderIfPossible(record.name);
+          app.skins = app.skins.filter((s) => s !== record.name);
+          app.skinDrafts.delete(record.name);
+          if (!app.skins.length) {
+            app.skinName = "new_item";
+            els.skinName.value = app.skinName;
+            for (const f of app.frames) {
+              app.layerMap.set(f, createEmptyLayer());
+              app.undoMap.set(f, []);
+              app.redoMap.set(f, []);
+            }
+            await redrawMain();
+          } else {
+            if (app.skinName === record.name) app.skinName = app.skins[0];
+            els.skinName.value = app.skinName;
+            await loadSkinFrames(app.skinName, beforeActive);
+          }
+          rebuildSkinSelect();
+          if (pushUndo) {
+            app.skinDeleteUndoStack.push(record);
+            app.skinDeleteRedoStack = [];
+          }
+          setStatus(`削除: ${record.name}`);
+          return true;
+        }
+
+        async function undoSkinDelete() {
+          const record = app.skinDeleteUndoStack.pop();
+          if (!record) return false;
+          const beforeActive = app.skinName;
+          const insertAt = Math.max(0, Math.min(record.index, app.skins.length));
+          app.skins.splice(insertAt, 0, record.name);
+          if (record.layers) app.skinDrafts.set(record.name, serializableLayersToMap(record.layers));
+          if (record.removedOnDisk && record.layers) await writeSkinFolderFromRecord(record);
+          const target = record.wasActive ? record.name : (record.prevActive || app.skinName || record.name);
+          app.skinName = app.skins.includes(target) ? target : record.name;
+          els.skinName.value = app.skinName;
+          rebuildSkinSelect();
+          await loadSkinFrames(app.skinName, beforeActive);
+          app.skinDeleteRedoStack.push(record);
+          setStatus(`削除を戻しました: ${record.name}`);
+          return true;
+        }
+
+        async function redoSkinDelete() {
+          const record = app.skinDeleteRedoStack.pop();
+          if (!record) return false;
+          await applyDeleteRecord(record, false);
+          app.skinDeleteUndoStack.push(record);
+          setStatus(`削除をやり直しました: ${record.name}`);
+          return true;
+        }
+
+        function clearLayer(layer) {
+          layer.fill(0);
+        }
+
+        function applyMovedLayer(snapshot, dx, dy) {
+          const layer = currentLayer();
+          const { w, h } = getCurrentSize();
+          clearLayer(layer);
+          for (let y = 0; y < h; y += 1) {
+            for (let x = 0; x < w; x += 1) {
+              const sx = x - dx;
+              const sy = y - dy;
+              if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+              const si = (sy * w + sx) * 4;
+              const di = (y * w + x) * 4;
+              layer[di] = snapshot[si];
+              layer[di + 1] = snapshot[si + 1];
+              layer[di + 2] = snapshot[si + 2];
+              layer[di + 3] = snapshot[si + 3];
+            }
+          }
+        }
+
+        function flipLayerHorizontal(layer) {
+          const { w, h } = getCurrentSize();
+          const src = new Uint8ClampedArray(layer);
+          for (let y = 0; y < h; y += 1) {
+            for (let x = 0; x < w; x += 1) {
+              const si = (y * w + x) * 4;
+              const di = (y * w + (w - 1 - x)) * 4;
+              layer[di] = src[si];
+              layer[di + 1] = src[si + 1];
+              layer[di + 2] = src[si + 2];
+              layer[di + 3] = src[si + 3];
+            }
+          }
+        }
+
+        function flipLayerVertical(layer) {
+          const { w, h } = getCurrentSize();
+          const src = new Uint8ClampedArray(layer);
+          for (let y = 0; y < h; y += 1) {
+            for (let x = 0; x < w; x += 1) {
+              const si = (y * w + x) * 4;
+              const di = ((h - 1 - y) * w + x) * 4;
+              layer[di] = src[si];
+              layer[di + 1] = src[si + 1];
+              layer[di + 2] = src[si + 2];
+              layer[di + 3] = src[si + 3];
+            }
+          }
+        }
+
+        function drawComposedTo(ctx, frame, w, h) {
+          if (app.editorMode === "assets") {
+            const doc = getCurrentAssetDoc();
+            const layer = doc ? compositeAssetDoc(doc) : createEmptyLayer(w, h);
+            ctx.clearRect(0, 0, w, h);
+            const id = new ImageData(new Uint8ClampedArray(layer), w, h);
+            const temp = document.createElement("canvas");
+            temp.width = w;
+            temp.height = h;
+            temp.getContext("2d").putImageData(id, 0, 0);
+            ctx.drawImage(temp, 0, 0, w, h);
+            return Promise.resolve();
+          }
+          const base = new Image();
+          base.src = frameNameToPath(frame);
+          const layer = app.layerMap.get(frame) || createEmptyLayer(64, 64);
+          return new Promise((resolve) => {
+            base.onload = () => {
+              ctx.clearRect(0, 0, w, h);
+              ctx.globalAlpha = 0.45;
+              ctx.drawImage(base, 0, 0, w, h);
+              ctx.globalAlpha = 1;
+              const id = new ImageData(new Uint8ClampedArray(layer), 64, 64);
+              const temp = document.createElement("canvas");
+              temp.width = 64;
+              temp.height = 64;
+              temp.getContext("2d").putImageData(id, 0, 0);
+              ctx.drawImage(temp, 0, 0, w, h);
+              resolve();
+            };
+            base.onerror = () => {
+              ctx.clearRect(0, 0, w, h);
+              resolve();
+            };
+          });
+        }
+
+        async function redrawMain() {
+          const { w, h } = getCurrentSize();
+          await drawComposedTo(paintCtx, app.currentFrame, w, h);
+          if (app.editorMode === "skin") {
+            await redrawThumbs();
+            els.frameInfo.textContent = `Frame: ${app.currentFrame}`;
+          } else {
+            els.frameInfo.textContent = `Asset: ${app.currentAssetPath || "-"} (${w}x${h})`;
+            renderLayerList();
+          }
+        }
+
+        async function redrawThumbs() {
+          const nodes = [...els.thumbs.querySelectorAll(".thumb")];
+          for (const n of nodes) {
+            const frame = n.dataset.frame;
+            const c = n.querySelector("canvas");
+            const cx = c.getContext("2d");
+            await drawComposedTo(cx, frame, 64, 64);
+            n.classList.toggle("active", frame === app.currentFrame);
+          }
+        }
+
+        function renderPalette(container, colors, selectedHex, onPick) {
+          container.innerHTML = "";
+          colors.forEach((color) => {
+            const b = document.createElement("button");
+            b.className = "swatch" + (color === "transparent" ? " transparent" : "");
+            if (color !== "transparent") b.style.background = color;
+            if (color === selectedHex || (color === "transparent" && app.tool === "erase")) b.classList.add("selected");
+            b.type = "button";
+            b.addEventListener("click", () => onPick(color));
+            container.appendChild(b);
+          });
+        }
+
+        function drawHueCanvas() {
+          const g = hueCtx.createLinearGradient(0, 0, 0, 180);
+          g.addColorStop(0 / 6, "#ff0000");
+          g.addColorStop(1 / 6, "#ffff00");
+          g.addColorStop(2 / 6, "#00ff00");
+          g.addColorStop(3 / 6, "#00ffff");
+          g.addColorStop(4 / 6, "#0000ff");
+          g.addColorStop(5 / 6, "#ff00ff");
+          g.addColorStop(1, "#ff0000");
+          hueCtx.fillStyle = g;
+          hueCtx.fillRect(0, 0, 34, 180);
+        }
+
+        function drawSVCanvas() {
+          const rgb = hsvToRgb(app.hsv.h, 100, 100);
+          svCtx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+          svCtx.fillRect(0, 0, 180, 180);
+          const white = svCtx.createLinearGradient(0, 0, 180, 0);
+          white.addColorStop(0, "#fff");
+          white.addColorStop(1, "rgba(255,255,255,0)");
+          svCtx.fillStyle = white;
+          svCtx.fillRect(0, 0, 180, 180);
+          const black = svCtx.createLinearGradient(0, 0, 0, 180);
+          black.addColorStop(0, "rgba(0,0,0,0)");
+          black.addColorStop(1, "#000");
+          svCtx.fillStyle = black;
+          svCtx.fillRect(0, 0, 180, 180);
+        }
+
+        function applyCurrentColorFromHSV() {
+          app.selectedColor = hsvToRgb(app.hsv.h, app.hsv.s, app.hsv.v);
+          els.hexInput.value = rgbaToHex(app.selectedColor);
+          app.tool = app.tool === "erase" ? "pen" : app.tool;
+          renderPalettes();
+        }
+
+        function renderPalettes() {
+          const hex = rgbaToHex(app.selectedColor);
+          renderPalette(els.basePalette, BASE_PALETTE, hex, (c) => {
+            const rgb = hexToRgb(c);
+            if (rgb) {
+              app.selectedColor = rgb;
+              app.hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+              els.hexInput.value = c;
+              app.tool = "pen";
+              drawSVCanvas();
+              renderPalettes();
+            }
+          });
+          renderPalette(els.favPalette, app.favorites, hex, (c) => {
+            const rgb = hexToRgb(c);
+            if (rgb) {
+              app.selectedColor = rgb;
+              app.hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+              els.hexInput.value = c;
+              app.tool = "pen";
+              drawSVCanvas();
+              renderPalettes();
+            }
+          });
+          renderPalette(els.itemPalette, app.itemColors.length ? app.itemColors : ["transparent"], hex, (c) => {
+            if (c === "transparent") {
+              app.eyedropTemp = false;
+              app.tool = "erase";
+            } else {
+              const rgb = hexToRgb(c);
+              if (rgb) {
+                app.selectedColor = rgb;
+                app.hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+                els.hexInput.value = c;
+                app.eyedropTemp = false;
+                app.tool = "pen";
+              }
+            }
+            drawSVCanvas();
+            renderPalettes();
+          });
+          refreshToolUI();
+        }
+
+        async function extractItemColors(itemName) {
+          const sources = [];
+          const single = `assets/${itemName}.png`;
+          sources.push(single);
+          app.frames.forEach((f) => sources.push(`assets/${itemName}/${f}.png`));
+          app.frames.forEach((f) => {
+            if (f.startsWith("side_")) sources.push(`assets/${itemName}/2${f}.png`);
+          });
+
+          const set = new Set();
+          for (const src of sources) {
+            if (!hasAsset(src)) continue;
+            // eslint-disable-next-line no-await-in-loop
+            const colors = await extractColorsFromImage(src);
+            colors.forEach((c) => set.add(c));
+          }
+          const arr = [...set].slice(0, 80);
+          app.itemColors = arr;
+          renderPalettes();
+        }
+
+        function extractColorsFromImage(src) {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.src = src + `?v=${Date.now()}`;
+            img.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = img.naturalWidth;
+              c.height = img.naturalHeight;
+              const cx = c.getContext("2d", { willReadFrequently: true });
+              try {
+                cx.drawImage(img, 0, 0);
+                const d = cx.getImageData(0, 0, c.width, c.height).data;
+                const colors = new Set();
+                for (let i = 0; i < d.length; i += 4) {
+                  const a = d[i + 3];
+                  if (a === 0) continue;
+                  const hex = `#${d[i].toString(16).padStart(2, "0")}${d[i + 1].toString(16).padStart(2, "0")}${d[i + 2].toString(16).padStart(2, "0")}`;
+                  colors.add(hex);
+                }
+                resolve([...colors]);
+              } catch (_) {
+                resolve([]);
+              }
+            };
+            img.onerror = () => resolve([]);
+          });
+        }
+
+        function pointerToPixel(event) {
+          const rect = els.paintCanvas.getBoundingClientRect();
+          const { w, h } = getCurrentSize();
+          const x = Math.floor(((event.clientX - rect.left) / rect.width) * w);
+          const y = Math.floor(((event.clientY - rect.top) / rect.height) * h);
+          return { x: Math.max(0, Math.min(w - 1, x)), y: Math.max(0, Math.min(h - 1, y)) };
+        }
+
+        function pickColorAt(event) {
+          const { x, y } = pointerToPixel(event);
+          const layer = currentLayer();
+          const p = readPixel(layer, x, y);
+          if (p.a > 0) {
+            app.eyedropTransparentHit = false;
+            app.selectedColor = p;
+            app.hsv = rgbToHsv(p.r, p.g, p.b);
+            els.hexInput.value = rgbaToHex(p);
+            app.tool = "pen";
+            setStatus(`色を取得: ${els.hexInput.value}`);
+            return;
+          }
+          try {
+            const raw = paintCtx.getImageData(x, y, 1, 1).data;
+            if (raw && raw[3] > 0) {
+              app.eyedropTransparentHit = false;
+              const c = { r: raw[0], g: raw[1], b: raw[2], a: 255 };
+              app.selectedColor = c;
+              app.hsv = rgbToHsv(c.r, c.g, c.b);
+              els.hexInput.value = rgbaToHex(c);
+              app.tool = "pen";
+              setStatus(`色を取得: ${els.hexInput.value}`);
+              return;
+            }
+          } catch (_) {}
+          app.eyedropTransparentHit = true;
+          app.tool = "erase";
+          setStatus("透明を取得: 消しゴムに切替");
+        }
+
+        async function paintAt(event, first) {
+          const { x, y } = pointerToPixel(event);
+          const layer = currentLayer();
+          if (first) pushUndo(getCurrentKey());
+
+          if (app.eyedropTemp) {
+            pickColorAt(event);
+            renderPalettes();
+            drawSVCanvas();
+            await redrawMain();
+            return;
+          }
+
+          if (app.tool === "fill") {
+            const c = app.tool === "erase" ? { r: 0, g: 0, b: 0, a: 0 } : app.selectedColor;
+            floodFill(layer, x, y, c);
+          } else {
+            const c = app.tool === "erase" ? { r: 0, g: 0, b: 0, a: 0 } : app.selectedColor;
+            writePixel(layer, x, y, c);
+          }
+
+          await redrawMain();
+        }
+
+        async function loadSkinFrames(skinName, previousSkinName = app.skinName) {
+          if (app.loaded && previousSkinName) {
+            app.skinDrafts.set(previousSkinName, cloneLayerMap(app.layerMap));
+          }
+          app.skinName = skinName;
+          els.skinName.value = skinName;
+          app.layerMap.clear();
+          app.undoMap.clear();
+          app.redoMap.clear();
+
+          if (app.skinDrafts.has(skinName)) {
+            app.layerMap = cloneLayerMap(app.skinDrafts.get(skinName));
+            for (const frame of app.frames) {
+              app.undoMap.set(frame, []);
+              app.redoMap.set(frame, []);
+            }
+            await extractItemColors(skinName);
+            await redrawMain();
+            setStatus(`読み込み(保持): ${skinName}`);
+            return;
+          }
+
+          for (const frame of app.frames) {
+            let layer = createEmptyLayer();
+            if (app.offlineMode && app.outputRootHandle) {
+              // eslint-disable-next-line no-await-in-loop
+              layer = await loadLayerFromHandle(app.outputRootHandle, skinName, frame);
+            } else {
+              const p = skinFramePath(skinName, frame);
+              // eslint-disable-next-line no-await-in-loop
+              layer = hasAsset(p) ? await loadLayerFromPath(p) : createEmptyLayer();
+            }
+            app.layerMap.set(frame, layer);
+            app.undoMap.set(frame, []);
+            app.redoMap.set(frame, []);
+          }
+          app.skinDrafts.set(skinName, cloneLayerMap(app.layerMap));
+          await extractItemColors(skinName);
+          await redrawMain();
+          setStatus(`読み込み: ${skinName}`);
+        }
+
+        async function refreshAssetPaths() {
+          const fromBoot = [...app.assetFiles].filter((p) => String(p).toLowerCase().endsWith(".png"));
+          const set = new Set(fromBoot.map((p) => String(p).replace(/^\.\//, "")));
+          if (app.offlineMode && app.outputRootHandle) {
+            const scanned = await listAssetPngFilesFromHandle(app.outputRootHandle);
+            scanned.forEach((p) => set.add(p));
+          }
+          app.assetPaths = [...set].sort((a, b) => a.localeCompare(b, "ja"));
+          rebuildAssetList();
+        }
+
+        async function openAssetForEdit(assetPath) {
+          const path = String(assetPath || "").replace(/^\.\//, "");
+          if (!path) return;
+          const existing = app.assetDocMap.get(path);
+          if (existing) {
+            app.currentAssetPath = path;
+            resizePaintCanvas(existing.w, existing.h);
+            els.assetPath.value = path.replace(/^assets\//, "");
+            rebuildAssetList();
+            await redrawMain();
+            setStatus(`編集(保持): ${path} (${existing.w}x${existing.h})`);
+            return;
+          }
+          let loaded = null;
+          if (app.offlineMode && app.outputRootHandle) {
+            try {
+              loaded = await loadAssetFromHandle(app.outputRootHandle, path);
+            } catch (_) {
+              loaded = null;
+            }
+          }
+          if (!loaded) loaded = await loadAssetFromPath(path);
+          app.currentAssetPath = path;
+          app.assetDocMap.set(path, createAssetDoc(loaded.w, loaded.h, loaded.data));
+          app.assetUndoMap.set(path, []);
+          app.assetRedoMap.set(path, []);
+          resizePaintCanvas(loaded.w, loaded.h);
+          els.assetPath.value = path.replace(/^assets\//, "");
+          rebuildAssetList();
+          await redrawMain();
+          setStatus(`編集: ${path} (${loaded.w}x${loaded.h})`);
+        }
+
+        async function createNewAsset() {
+          const rel = String(els.assetPath.value || "").trim().replace(/^assets\//, "");
+          if (!rel) {
+            setStatus("新規画像パスを入力してください");
+            return;
+          }
+          const path = `assets/${rel.endsWith(".png") ? rel : `${rel}.png`}`;
+          const w = Math.max(1, Math.min(2048, Math.floor(Number(els.assetWidth.value) || 64)));
+          const h = Math.max(1, Math.min(2048, Math.floor(Number(els.assetHeight.value) || 64)));
+          app.assetDocMap.set(path, createAssetDoc(w, h, null));
+          app.assetUndoMap.set(path, []);
+          app.assetRedoMap.set(path, []);
+          if (!app.assetPaths.includes(path)) app.assetPaths.push(path);
+          app.assetPaths.sort((a, b) => a.localeCompare(b, "ja"));
+          app.currentAssetPath = path;
+          resizePaintCanvas(w, h);
+          rebuildAssetList();
+          await redrawMain();
+          setStatus(`新規画像を作成: ${path} (${w}x${h})`);
+        }
+
+        async function resizeCurrentAsset() {
+          if (app.editorMode !== "assets" || !app.currentAssetPath) return;
+          const doc = getCurrentAssetDoc();
+          if (!doc) return;
+          const oldSize = { w: doc.w, h: doc.h };
+          const newW = Math.max(1, Math.min(2048, Math.floor(Number(els.assetWidth.value) || oldSize.w)));
+          const newH = Math.max(1, Math.min(2048, Math.floor(Number(els.assetHeight.value) || oldSize.h)));
+          if (newW === oldSize.w && newH === oldSize.h) return;
+          pushAssetUndo(app.currentAssetPath);
+          for (const layer of doc.layers) {
+            const old = layer.pixels;
+            const next = createEmptyLayer(newW, newH);
+            const copyW = Math.min(oldSize.w, newW);
+            const copyH = Math.min(oldSize.h, newH);
+            for (let y = 0; y < copyH; y += 1) {
+              for (let x = 0; x < copyW; x += 1) {
+                const si = (y * oldSize.w + x) * 4;
+                const di = (y * newW + x) * 4;
+                next[di] = old[si];
+                next[di + 1] = old[si + 1];
+                next[di + 2] = old[si + 2];
+                next[di + 3] = old[si + 3];
+              }
+            }
+            layer.pixels = next;
+          }
+          doc.w = newW;
+          doc.h = newH;
+          app.assetUndoMap.set(app.currentAssetPath, []);
+          app.assetRedoMap.set(app.currentAssetPath, []);
+          resizePaintCanvas(newW, newH);
+          await redrawMain();
+          setStatus(`サイズ変更: ${newW}x${newH}`);
+        }
+
+        async function addBlankLayerToCurrentAsset() {
+          const doc = getCurrentAssetDoc();
+          if (!doc) return;
+          pushAssetUndo(app.currentAssetPath);
+          const id = doc.nextLayerId++;
+          doc.layers.push({
+            id,
+            name: `レイヤー${id}`,
+            visible: true,
+            pixels: createEmptyLayer(doc.w, doc.h),
+          });
+          doc.activeLayerId = id;
+          await redrawMain();
+          setStatus("レイヤーを追加しました");
+        }
+
+        async function deleteCurrentAssetLayer() {
+          const doc = getCurrentAssetDoc();
+          if (!doc) return;
+          if (doc.layers.length <= 1) {
+            setStatus("最後の1レイヤーは削除できません");
+            return;
+          }
+          pushAssetUndo(app.currentAssetPath);
+          const idx = doc.layers.findIndex((l) => l.id === doc.activeLayerId);
+          if (idx < 0) return;
+          doc.layers.splice(idx, 1);
+          const next = doc.layers[Math.max(0, idx - 1)] || doc.layers[0];
+          doc.activeLayerId = next.id;
+          await redrawMain();
+          setStatus("レイヤーを削除しました");
+        }
+
+        function loadLayerFromPath(path) {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.src = `${path}?v=${Date.now()}`;
+            img.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = 64;
+              c.height = 64;
+              const cx = c.getContext("2d", { willReadFrequently: true });
+              cx.clearRect(0, 0, 64, 64);
+              cx.drawImage(img, 0, 0, 64, 64);
+              resolve(new Uint8ClampedArray(cx.getImageData(0, 0, 64, 64).data));
+            };
+            img.onerror = () => resolve(createEmptyLayer());
+          });
+        }
+
+        function layerToPngDataUrl(frame) {
+          let w;
+          let h;
+          let layer;
+          if (app.editorMode === "assets") {
+            const doc = getCurrentAssetDoc();
+            if (doc) {
+              w = doc.w;
+              h = doc.h;
+              layer = compositeAssetDoc(doc);
+            } else {
+              const size = getCurrentSize();
+              w = size.w;
+              h = size.h;
+              layer = createEmptyLayer(w, h);
+            }
+          } else {
+            const size = getCurrentSize();
+            w = size.w;
+            h = size.h;
+            const map = getActiveLayerMap();
+            layer = map.get(frame) || createEmptyLayer(w, h);
+          }
+          const c = document.createElement("canvas");
+          c.width = w;
+          c.height = h;
+          const cx = c.getContext("2d");
+          cx.putImageData(new ImageData(new Uint8ClampedArray(layer), w, h), 0, 0);
+          return c.toDataURL("image/png");
+        }
+
+        function isTypingElement(target) {
+          if (!target) return false;
+          const tag = String(target.tagName || "").toLowerCase();
+          return tag === "input" || tag === "textarea" || target.isContentEditable === true;
+        }
+
+        async function copyCurrentFrame() {
+          const layer = currentLayer();
+          const size = getCurrentSize();
+          app.clipboardLayer = {
+            w: size.w,
+            h: size.h,
+            data: new Uint8ClampedArray(layer),
+          };
+          if (app.editorMode === "assets") {
+            const doc = getCurrentAssetDoc();
+            if (doc) {
+              pushAssetUndo(app.currentAssetPath);
+              const nextId = doc.nextLayerId++;
+              doc.layers.push({
+                id: nextId,
+                name: `レイヤー${nextId}`,
+                visible: true,
+                pixels: new Uint8ClampedArray(layer),
+              });
+              doc.activeLayerId = nextId;
+              await redrawMain();
+              setStatus("コピーして新規レイヤーを追加しました");
+              return;
+            }
+          }
+          setStatus("コピーしました");
+        }
+
+        async function pasteToCurrentFrame() {
+          if (app.clipboardLayer) {
+            if (app.editorMode === "assets" && app.currentAssetPath) {
+              const doc = getCurrentAssetDoc();
+              if (doc) {
+                pushAssetUndo(app.currentAssetPath);
+                const nextId = doc.nextLayerId++;
+                const nextPixels = createEmptyLayer(doc.w, doc.h);
+                const copyW = Math.min(doc.w, app.clipboardLayer.w);
+                const copyH = Math.min(doc.h, app.clipboardLayer.h);
+                for (let y = 0; y < copyH; y += 1) {
+                  for (let x = 0; x < copyW; x += 1) {
+                    const si = (y * app.clipboardLayer.w + x) * 4;
+                    const di = (y * doc.w + x) * 4;
+                    nextPixels[di] = app.clipboardLayer.data[si];
+                    nextPixels[di + 1] = app.clipboardLayer.data[si + 1];
+                    nextPixels[di + 2] = app.clipboardLayer.data[si + 2];
+                    nextPixels[di + 3] = app.clipboardLayer.data[si + 3];
+                  }
+                }
+                doc.layers.push({
+                  id: nextId,
+                  name: `レイヤー${nextId}`,
+                  visible: true,
+                  pixels: nextPixels,
+                });
+                doc.activeLayerId = nextId;
+                await redrawMain();
+                setStatus("貼り付けして新規レイヤーを追加しました");
+                return;
+              }
+            } else {
+              const key = getCurrentKey();
+              const map = getActiveLayerMap();
+              pushUndo(key);
+              map.set(key, new Uint8ClampedArray(app.clipboardLayer.data));
+              await redrawMain();
+              setStatus("貼り付けました");
+              return;
+            }
+          }
+          if (!app.clipboardLayer) {
+            setStatus("貼り付けできるデータがありません");
+            return;
+          }
+        }
+
+        async function saveFrame(frame) {
+          if (app.editorMode === "assets") {
+            if (!app.currentAssetPath) throw new Error("保存対象の画像がありません");
+            if (!app.offlineMode || !app.outputRootHandle) {
+              throw new Error("assets編集の保存は file:// + 保存先紐付け時のみ対応です");
+            }
+            const dataUrl = layerToPngDataUrl(app.currentAssetPath);
+            await saveAssetToHandle(app.outputRootHandle, app.currentAssetPath, dataUrl);
+            if (!app.assetFiles.has(app.currentAssetPath)) app.assetFiles.add(app.currentAssetPath);
+            return;
+          }
+          if (app.offlineMode) {
+            if (!app.outputRootHandle) throw new Error("先に「保存先選択(file://)」を実行してください");
+            const skin = (els.skinName.value || "default_skin").trim();
+            const dataUrl = layerToPngDataUrl(frame);
+            await saveFrameToHandle(app.outputRootHandle, skin, frame, dataUrl);
+            return;
+          }
+          const skin = (els.skinName.value || "default_skin").trim();
+          if (!skin) return;
+          const dataUrl = layerToPngDataUrl(frame);
+          const res = await fetch("/api/save-skin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ skinName: skin, frameName: frame, dataUrl }),
+          });
+          if (!res.ok) throw new Error(`save failed: ${frame}`);
+        }
+
+        async function init() {
+          loadFavoritesFromStorage();
+          drawHueCanvas();
+          drawSVCanvas();
+          renderPalettes();
+
+          let boot;
+          let restored = false;
+          if (location.protocol === "file:") {
+            app.offlineMode = true;
+            boot = offlineBootstrap();
+          } else {
+            boot = await fetchBootstrap();
+          }
+          app.frames = expandFramesWith2Side(boot.frames);
+          app.skins = boot.skins;
+          app.assetFiles = new Set((boot.assetFiles || []).map((p) => String(p).replace(/^\.\//, "")));
+
+          if (app.offlineMode) {
+            restored = await tryRestoreOutputRootHandle();
+            els.saveCurrent.disabled = !restored;
+            els.saveAll.disabled = !restored;
+            setStatus(restored
+              ? "file://モード: 保存先権限を復元しました。保存できます。"
+              : "file://モード: 先に「保存先選択(file://)」で権限を紐付けてください。");
+          }
+          await refreshAssetPaths();
+
+          app.currentFrame = app.frames[0];
+          if (app.skins.length) {
+            app.skinName = app.skins[0];
+          } else {
+            app.skinName = "sickle";
+          }
+
+          els.skinName.value = app.skinName;
+          rebuildSkinSelect();
+          setEditorMode("skin");
+          resizePaintCanvas(64, 64);
+
+          els.thumbs.innerHTML = "";
+          for (const frame of app.frames) {
+            const d = document.createElement("div");
+            d.className = "thumb";
+            d.dataset.frame = frame;
+            d.innerHTML = `<canvas width=64 height=64></canvas><div class=small>${frame}</div>`;
+            d.addEventListener("click", async () => {
+              app.currentFrame = frame;
+              await redrawMain();
+            });
+            els.thumbs.appendChild(d);
+          }
+
+          await loadSkinFrames(app.skinName);
+          app.loaded = true;
+        }
+
+        els.modeSkin.addEventListener("click", () => {
+          setEditorMode("skin");
+        });
+        els.modeAssets.addEventListener("click", async () => {
+          setEditorMode("assets");
+          await refreshAssetPaths();
+          if (!app.currentAssetPath && app.assetPaths.length) {
+            await openAssetForEdit(app.assetPaths[0]);
+          } else {
+            await redrawMain();
+          }
+        });
+        els.createAsset.addEventListener("click", async () => {
+          await createNewAsset();
+        });
+        els.resizeAsset.addEventListener("click", async () => {
+          await resizeCurrentAsset();
+        });
+        els.addLayerBtn.addEventListener("click", async () => {
+          await addBlankLayerToCurrentAsset();
+        });
+        els.deleteLayerBtn.addEventListener("click", async () => {
+          await deleteCurrentAssetLayer();
+        });
+
+        els.toolPen.addEventListener("click", () => { setTool("pen"); });
+        els.toolFill.addEventListener("click", () => { setTool("fill"); });
+        els.toolErase.addEventListener("click", () => { setTool("erase"); });
+
+        async function doUndo() {
+          if (app.editorMode === "assets") {
+            const key = app.currentAssetPath;
+            const u = app.assetUndoMap.get(key) || [];
+            if (!u.length) return false;
+            const r = app.assetRedoMap.get(key) || [];
+            const current = app.assetDocMap.get(key);
+            if (current) r.push(cloneAssetDoc(current));
+            app.assetRedoMap.set(key, r);
+            app.assetDocMap.set(key, u.pop());
+            const size = getCurrentSize();
+            resizePaintCanvas(size.w, size.h);
+            await redrawMain();
+            return true;
+          }
+          const key = getCurrentKey();
+          const layerMap = getActiveLayerMap();
+          const undoMap = getActiveUndoMap();
+          const redoMap = getActiveRedoMap();
+          const u = undoMap.get(key) || [];
+          if (u.length) {
+            const r = redoMap.get(key) || [];
+            r.push(new Uint8ClampedArray(currentLayer()));
+            redoMap.set(key, r);
+            layerMap.set(key, u.pop());
+            await redrawMain();
+            return true;
+          }
+          return undoSkinDelete();
+        }
+
+        async function doRedo() {
+          if (app.editorMode === "assets") {
+            const key = app.currentAssetPath;
+            const r = app.assetRedoMap.get(key) || [];
+            if (!r.length) return false;
+            const u = app.assetUndoMap.get(key) || [];
+            const current = app.assetDocMap.get(key);
+            if (current) u.push(cloneAssetDoc(current));
+            app.assetUndoMap.set(key, u);
+            app.assetDocMap.set(key, r.pop());
+            const size = getCurrentSize();
+            resizePaintCanvas(size.w, size.h);
+            await redrawMain();
+            return true;
+          }
+          const key = getCurrentKey();
+          const layerMap = getActiveLayerMap();
+          const undoMap = getActiveUndoMap();
+          const redoMap = getActiveRedoMap();
+          const r = redoMap.get(key) || [];
+          if (r.length) {
+            const u = undoMap.get(key) || [];
+            u.push(new Uint8ClampedArray(currentLayer()));
+            undoMap.set(key, u);
+            layerMap.set(key, r.pop());
+            await redrawMain();
+            return true;
+          }
+          return redoSkinDelete();
+        }
+
+        els.undoBtn.addEventListener("click", async () => {
+          await doUndo();
+        });
+
+        els.redoBtn.addEventListener("click", async () => {
+          await doRedo();
+        });
+
+        window.addEventListener("keydown", async (e) => {
+          const cmd = e.metaKey || e.ctrlKey;
+          const key = e.key.toLowerCase();
+          if (cmd && key === "z" && !e.shiftKey) {
+            e.preventDefault();
+            await doUndo();
+            return;
+          }
+          if (cmd && ((key === "z" && e.shiftKey) || key === "y")) {
+            e.preventDefault();
+            await doRedo();
+            return;
+          }
+          if (cmd && key === "a") {
+            e.preventDefault();
+            app.selectionAll = true;
+            setStatus("全選択");
+            return;
+          }
+          if (cmd && key === "c") {
+            e.preventDefault();
+            await copyCurrentFrame();
+            return;
+          }
+          if (cmd && key === "v") {
+            e.preventDefault();
+            await pasteToCurrentFrame();
+            return;
+          }
+          if (cmd && key === "f") {
+            e.preventDefault();
+            pushUndo(getCurrentKey());
+            flipLayerHorizontal(currentLayer());
+            await redrawMain();
+            setStatus("左右反転");
+            return;
+          }
+          if (cmd && key === "s") {
+            e.preventDefault();
+            await els.saveCurrent.click();
+            return;
+          }
+          if (!cmd && key === "h" && !isTypingElement(e.target)) {
+            e.preventDefault();
+            pushUndo(getCurrentKey());
+            flipLayerVertical(currentLayer());
+            await redrawMain();
+            setStatus("上下反転");
+            return;
+          }
+          if ((e.key === "Delete" || e.key === "Backspace") && !isTypingElement(e.target)) {
+            e.preventDefault();
+            pushUndo(getCurrentKey());
+            clearLayer(currentLayer());
+            await redrawMain();
+            setStatus("現在フレームを全削除しました");
+            return;
+          }
+        });
+
+        els.addFav.addEventListener("click", () => {
+          const hex = rgbaToHex(app.selectedColor);
+          if (!app.favorites.includes(hex)) app.favorites.unshift(hex);
+          if (app.favorites.length > 40) app.favorites.length = 40;
+          saveFavoritesToStorage();
+          renderPalettes();
+        });
+
+        els.hexInput.addEventListener("change", () => {
+          const rgb = hexToRgb(els.hexInput.value);
+          if (!rgb) return;
+          app.selectedColor = rgb;
+          app.hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+          app.tool = "pen";
+          drawSVCanvas();
+          renderPalettes();
+        });
+
+        function handleSVPick(ev) {
+          const r = els.svCanvas.getBoundingClientRect();
+          const x = Math.max(0, Math.min(r.width, ev.clientX - r.left));
+          const y = Math.max(0, Math.min(r.height, ev.clientY - r.top));
+          app.hsv.s = Math.round((x / r.width) * 100);
+          app.hsv.v = Math.round(100 - (y / r.height) * 100);
+          applyCurrentColorFromHSV();
+          drawSVCanvas();
+        }
+        function handleHuePick(ev) {
+          const r = els.hueCanvas.getBoundingClientRect();
+          const y = Math.max(0, Math.min(r.height, ev.clientY - r.top));
+          app.hsv.h = Math.round((y / r.height) * 360) % 360;
+          applyCurrentColorFromHSV();
+          drawSVCanvas();
+        }
+
+        els.svCanvas.addEventListener("pointerdown", (e) => {
+          handleSVPick(e);
+          const move = (m) => handleSVPick(m);
+          const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+        });
+
+        els.hueCanvas.addEventListener("pointerdown", (e) => {
+          handleHuePick(e);
+          const move = (m) => handleHuePick(m);
+          const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+        });
+
+        els.paintCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
+        els.paintCanvas.addEventListener("pointerdown", async (e) => {
+          if (!app.loaded) return;
+          if (e.button === 2) {
+            e.preventDefault();
+            app.prevTool = app.tool;
+            app.eyedropTemp = true;
+            app.eyedropTransparentHit = false;
+            app.tool = "eyedrop";
+            app.mouseDown = true;
+            pickColorAt(e);
+            renderPalettes();
+            drawSVCanvas();
+            await redrawMain();
+            return;
+          }
+          if (e.button === 0 && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            const start = pointerToPixel(e);
+            app.moveDrag = true;
+            app.moveStartPixel = { x: start.x, y: start.y };
+            app.moveSnapshot = new Uint8ClampedArray(currentLayer());
+            app.mouseDown = true;
+            pushUndo(getCurrentKey());
+            setStatus("移動中...");
+            refreshToolUI();
+            return;
+          }
+          app.mouseDown = true;
+          await paintAt(e, true);
+        });
+        els.paintCanvas.addEventListener("pointermove", async (e) => {
+          if (!app.loaded || !app.mouseDown) return;
+          if (app.moveDrag && app.moveStartPixel && app.moveSnapshot) {
+            const cur = pointerToPixel(e);
+            const dx = cur.x - app.moveStartPixel.x;
+            const dy = cur.y - app.moveStartPixel.y;
+            applyMovedLayer(app.moveSnapshot, dx, dy);
+            await redrawMain();
+            return;
+          }
+          if (app.eyedropTemp) {
+            pickColorAt(e);
+            renderPalettes();
+            drawSVCanvas();
+            await redrawMain();
+            return;
+          }
+          if (app.tool === "fill") return;
+          await paintAt(e, false);
+        });
+        window.addEventListener("pointerup", async () => {
+          if (!app.mouseDown) return;
+          app.mouseDown = false;
+          if (app.moveDrag) {
+            app.moveDrag = false;
+            app.moveStartPixel = null;
+            app.moveSnapshot = null;
+            refreshToolUI();
+            setStatus("移動完了");
+            return;
+          }
+          if (app.eyedropTemp) {
+            app.eyedropTemp = false;
+            app.tool = app.eyedropTransparentHit ? "erase" : "pen";
+            renderPalettes();
+            setStatus(app.eyedropTransparentHit ? "スポイト終了: 消しゴム" : "スポイト終了: ペン");
+          }
+        });
+        window.addEventListener("pointercancel", () => {
+          let changed = false;
+          if (app.moveDrag) {
+            app.moveDrag = false;
+            app.moveStartPixel = null;
+            app.moveSnapshot = null;
+            changed = true;
+          }
+          if (app.eyedropTemp) {
+            app.eyedropTemp = false;
+            app.tool = app.eyedropTransparentHit ? "erase" : "pen";
+            renderPalettes();
+            return;
+          }
+          if (changed) refreshToolUI();
+        });
+        window.addEventListener("blur", () => {
+          let changed = false;
+          if (app.moveDrag) {
+            app.moveDrag = false;
+            app.moveStartPixel = null;
+            app.moveSnapshot = null;
+            changed = true;
+          }
+          if (app.eyedropTemp) {
+            app.eyedropTemp = false;
+            app.tool = app.eyedropTransparentHit ? "erase" : "pen";
+            renderPalettes();
+            return;
+          }
+          if (changed) refreshToolUI();
+        });
+
+        document.addEventListener("pointerdown", (e) => {
+          if (!els.itemContextMenu.classList.contains("open")) return;
+          if (els.itemContextMenu.contains(e.target)) return;
+          hideItemContextMenu();
+        });
+        window.addEventListener("resize", hideItemContextMenu);
+        window.addEventListener("scroll", hideItemContextMenu, true);
+        els.menuCancelSkin.addEventListener("click", () => {
+          hideItemContextMenu();
+        });
+        els.menuDeleteSkin.addEventListener("click", async () => {
+          const target = app.contextMenuSkin;
+          hideItemContextMenu();
+          await deleteSkinByName(target);
+        });
+
+        function uniqueSkinName(baseName) {
+          const base = String(baseName || "").trim() || "new_item";
+          if (!app.skins.includes(base)) return base;
+          let i = 2;
+          while (app.skins.includes(`${base}_${i}`)) i += 1;
+          return `${base}_${i}`;
+        }
+
+        async function addSkinFromInput() {
+          const raw = (els.skinName.value || "").trim();
+          const name = uniqueSkinName(raw || "new_item");
+          if (!app.skins.includes(name)) app.skins.unshift(name);
+          const prev = app.skinName;
+          app.skinName = name;
+          els.skinName.value = name;
+          rebuildSkinSelect();
+          await loadSkinFrames(name, prev);
+          setStatus(`アイテム追加: ${name}`);
+        }
+
+        els.addSkin.addEventListener("click", async () => {
+          await addSkinFromInput();
+        });
+
+        els.skinName.addEventListener("keydown", async (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const name = (els.skinName.value || "").trim();
+          if (!name) return;
+          if (!app.skins.includes(name)) app.skins.unshift(name);
+          const prev = app.skinName;
+          app.skinName = name;
+          rebuildSkinSelect();
+          await loadSkinFrames(name, prev);
+          setStatus(`読み込み: ${name}`);
+        });
+
+        els.newSkin.addEventListener("click", async () => {
+          const name = (els.skinName.value || "new_skin").trim();
+          app.skinName = name;
+          if (!app.skins.includes(name)) app.skins.unshift(name);
+          rebuildSkinSelect();
+          for (const f of app.frames) {
+            app.layerMap.set(f, createEmptyLayer());
+            app.undoMap.set(f, []);
+            app.redoMap.set(f, []);
+          }
+          app.skinDrafts.set(name, cloneLayerMap(app.layerMap));
+          await extractItemColors(name);
+          await redrawMain();
+          setStatus(`新規: ${name}`);
+        });
+
+        els.pickDir.addEventListener("click", async () => {
+          await chooseOutputRoot();
+        });
+
+        els.saveCurrent.addEventListener("click", async () => {
+          try {
+            await saveFrame(app.currentFrame);
+            if (app.editorMode === "assets") setStatus(`保存: ${app.currentAssetPath}`);
+            else setStatus(`保存: ${app.currentFrame}`);
+          } catch (err) {
+            setStatus(`保存失敗: ${err.message}`);
+          }
+        });
+
+        els.saveAll.addEventListener("click", async () => {
+          els.saveAll.disabled = true;
+          try {
+            if (app.editorMode === "assets") {
+              if (!app.offlineMode || !app.outputRootHandle) throw new Error("file://で保存先を選択してください");
+              const targets = [...app.assetDocMap.keys()];
+              for (const p of targets) {
+                app.currentAssetPath = p;
+                // eslint-disable-next-line no-await-in-loop
+                await saveFrame(p);
+              }
+              setStatus(`Assets保存完了: ${targets.length}件`);
+            } else {
+              for (const f of app.frames) {
+                // eslint-disable-next-line no-await-in-loop
+                await saveFrame(f);
+              }
+              setStatus(`全部保存完了: assets/skin/${(els.skinName.value || "").trim()}`);
+            }
+          } catch (err) {
+            setStatus(`保存失敗: ${err.message}`);
+          } finally {
+            els.saveAll.disabled = false;
+          }
+        });
+
+        init().catch((err) => {
+          setStatus(`初期化エラー: ${err.message}`);
+        });
+      })();
+    </script>
+  </body>
+</html>

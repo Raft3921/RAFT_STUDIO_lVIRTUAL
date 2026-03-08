@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>やんさん農業ゲーム マップエディタ</title>
+    <style>
+      :root { color-scheme: only light; }
+      html, body {
+        width: 100%; height: 100%; margin: 0; overflow: hidden;
+        background: #10210f; font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+      }
+      #root { width: 100%; height: 100%; display: grid; grid-template-columns: 320px 1fr; }
+      #sidebar {
+        border-right: 1px solid rgba(255,255,255,0.12);
+        background: linear-gradient(180deg, #1d3a18, #142a11);
+        padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; min-height: 0;
+      }
+      h1 { margin: 0; color: #efffe9; font-size: 16px; }
+      #controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      button {
+        border: 1px solid rgba(255,255,255,0.22);
+        background: #2d5a26; color: #edffe8; border-radius: 6px;
+        padding: 8px; cursor: pointer;
+      }
+      button:hover { background: #366d2d; }
+      #tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      #tabs button.active { border-color: #b3ffa5; background: #427f37; }
+      .layer-btn.active, #spawnToolBtn.active { border-color: #b3ffa5; background: #427f37; }
+      #meta { color: rgba(240,255,236,0.92); font-size: 12px; line-height: 1.4; white-space: pre-wrap; }
+      #panelWrap {
+        border: 1px solid rgba(255,255,255,0.16); border-radius: 8px;
+        background: rgba(0,0,0,0.16); padding: 8px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; height: 0;
+      }
+      #palettePanel { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .tile-btn {
+        display: grid; grid-template-columns: 36px 1fr; align-items: center; gap: 6px;
+        border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 4px;
+        background: rgba(255,255,255,0.05); color: #eaffe5; font-size: 11px; cursor: pointer;
+      }
+      .tile-btn.active { border-color: #b0ff9f; background: rgba(176,255,159,0.16); }
+      .tile-btn img {
+        width: 32px; height: 32px; image-rendering: pixelated;
+        border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
+      }
+      #addTilePanel { display: none; color: #f0ffec; font-size: 12px; }
+      #addTilePanel label { display: block; margin-top: 8px; margin-bottom: 4px; }
+      #addTilePanel input {
+        width: 100%; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.22);
+        background: rgba(0,0,0,0.24); color: #f0ffec; border-radius: 6px; padding: 8px;
+      }
+      #tileContextMenu {
+        position: fixed;
+        z-index: 30;
+        min-width: 132px;
+        background: #1c2f19;
+        border: 1px solid rgba(255,255,255,0.24);
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        padding: 6px;
+        display: none;
+      }
+      #tileContextMenu.open { display: grid; gap: 6px; }
+      #tileContextMenu button {
+        width: 100%;
+        text-align: left;
+      }
+      #viewport { position: relative; }
+      canvas {
+        width: 100%; height: 100%; display: block;
+        image-rendering: pixelated; cursor: crosshair;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <aside id="sidebar">
+        <h1>Map Editor (index3)</h1>
+        <div id="controls">
+          <button id="pickDirBtn">保存先選択</button>
+          <button id="saveBtn">保存 (Cmd/Ctrl+S)</button>
+          <button id="loadBtn">読込</button>
+          <button id="clearBtn">カメラ初期化</button>
+        </div>
+        <div id="layerControls" style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">
+          <button class="layer-btn active" data-layer="1">L1</button>
+          <button class="layer-btn" data-layer="1.5">L1.5</button>
+          <button class="layer-btn" data-layer="2">L2</button>
+          <button class="layer-btn" data-layer="3">L3</button>
+          <button class="layer-btn" data-layer="4">L4</button>
+          <button class="layer-btn" data-layer="5">L5</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr;gap:6px;">
+          <button id="spawnToolBtn">初期地点ツール: OFF</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center;">
+          <input id="mapWInput" type="number" min="16" max="2048" value="256" style="width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.24);color:#f0ffec;border-radius:6px;padding:8px;" />
+          <input id="mapHInput" type="number" min="16" max="2048" value="256" style="width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.24);color:#f0ffec;border-radius:6px;padding:8px;" />
+          <button id="applySizeBtn">サイズ適用</button>
+        </div>
+        <div id="tabs">
+          <button id="tabPalette" class="active">ブロック</button>
+          <button id="tabAdd">タイル追加</button>
+        </div>
+        <div id="meta"></div>
+        <div id="panelWrap">
+          <div id="palettePanel"></div>
+          <div id="addTilePanel">
+            <label for="tileName">タイル名</label>
+            <input id="tileName" placeholder="my_tile" />
+            <label for="tileSrc">画像パス</label>
+            <input id="tileSrc" placeholder="空欄で assets/タイル名.png" />
+            <label for="tileCollision">当たり判定</label>
+            <select id="tileCollision" style="width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,0.22);background:rgba(0,0,0,0.24);color:#f0ffec;border-radius:6px;padding:8px;">
+              <option value="none">なし</option>
+              <option value="h">横</option>
+              <option value="v">縦</option>
+              <option value="full">全面</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+              <input id="tileAnimOn" type="checkbox" style="width:auto;" />
+              <span>アニメーションON</span>
+            </label>
+            <label for="tileAnimFrames">フレーム数</label>
+            <input id="tileAnimFrames" type="number" min="2" max="60" value="4" />
+            <div id="tileAnimPreview" style="margin-top:6px;color:rgba(240,255,236,0.78);font-size:11px;white-space:pre-wrap;"></div>
+            <div style="margin-top:10px;">
+              <button id="addTileBtn" style="width:100%;">+ 追加</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <main id="viewport">
+        <canvas id="mapCanvas"></canvas>
+      </main>
+    </div>
+    <div id="tileContextMenu">
+      <button id="tileEditBtn" type="button">編集</button>
+      <button id="tileDeleteBtn" type="button">削除</button>
+      <button id="tileCancelBtn" type="button">やめる</button>
+    </div>
+    <script src="index3.js"></script>
+  </body>
+</html>

@@ -1,0 +1,664 @@
+Original prompt: index.html+javaScriptでウェブ2d農業ゲームを作りましょう
+3人称視点で、手前から奥へ向かうRPGのような視点でプレイヤーは「やんさん」で、assetsのなかのyansanを参照してください
+十字キーで移動できるようにして、カメラ追従も慣性のある感じにして、画面的にはuiはまだ作らず、（uiもクロームの最初から入っているものではないやつ）にして、画面全体がゲーム画面になるようにシアm賞
+
+- 初期化: 空プロジェクトを確認。assets/yansan配下のスプライト存在を確認。
+- 方針: index.html + game.jsで単一canvas全画面、疑似遠近の農地、矢印移動、慣性カメラ追従を実装する。
+- 実装: index.html + game.jsを追加。
+  - 単一canvasを画面全体に表示（margin/scrollbarなし、cursor非表示）。
+  - assets/yansanの各スプライトを読み込み、向きと移動状態でアニメ切替。
+  - 矢印キー移動（慣性つき）を実装。
+  - カメラ追従にsmoothDampを使い、慣性のある追従を実装。
+  - 疑似遠近投影で手前→奥の農地表現を実装。
+  - window.render_game_to_text / window.advanceTime を実装。
+- テスト: Playwrightクライアントで自動操作を実施。
+  - コマンド: node /Users/Raft/.codex/skills/develop-web-game/scripts/web_game_playwright_client.js --url http://127.0.0.1:4173 --actions-file /tmp/webgame-actions.json --iterations 3 --pause-ms 200 --screenshot-dir output/web-game
+  - 操作: ↑、→、↓+← を順に入力して移動を確認。
+  - 生成物: output/web-game/shot-{0..2}.png, state-{0..2}.json
+  - 結果: コンソールエラーなし。render_game_to_textでplayer/camera座標の更新を確認。
+- 注意点: file:// 直読みはcanvas taintでスクリーンショット失敗。http.server経由で検証。
+
+TODO / 次拡張候補:
+- 耕す・種まき・収穫の相互作用を追加。
+- タイルベース当たり判定と畑区画データを導入。
+- UIレイヤー（独自デザイン）を別キャンバスまたはDOMで追加。
+- 変更: やんさんアニメーションを指定ループへ変更。
+  - idle: idle1 -> idle2 -> idle3 を繰り返し。
+  - run: run1 -> run2 -> idle1 -> run3 -> run4 -> idle1 を繰り返し。
+  - idle用とrun用でフレームインデックスを分離。
+- 追加画像: 不足していたrun画像を64x64透明PNGで作成。
+  - front_run4.png
+  - back_run2.png / back_run4.png
+  - side_run1.png / side_run2.png / side_run3.png / side_run4.png
+- 再テスト: Playwrightで矢印操作（上下左右+停止）を3反復し、スクリーンショット/状態JSON更新を確認。エラーログなし。
+- 修正: 奥へ移動時（+depth）にfront画像を使うよう向き判定を反転。
+- 変更: カメラ距離を近づけるため投影パラメータを調整（viewDepth縮小、scale拡大）。
+- 変更: プレイヤー描画を自然アスペクト比でスケーリングするよう修正（幅=高さ*元画像比）。
+- 変更: ワールドをタイルマップ化（cols x rows）し、各タイルが画像参照で描画されるように刷新。
+- 追加: assets/tiles/{grass_tile,soil_tile,wet_soil_tile,path_tile}.png を新規生成。
+- 補完: 不足していた front_run3.png / back_run3.png を64x64透明画像で追加。
+- 再テスト: Playwrightで3反復を実施。output/web-gameにshot/stateを生成し、errorsは発生なし。
+- 変更: 移動アニメーションを run1 -> idle1 -> run2 -> idle1 の4フレームループへ変更（front/back/side）。
+- 変更: 遠近法描画を廃止し、正射影（トップダウン）に変更。
+- 変更: 画面全体を assets/grass.png の連結タイルで描画する方式へ刷新。
+- 維持: 矢印移動、慣性カメラ追従、アニメーション指定（run1,idle1,run2,idle1）を保持。
+- 再テスト: 画面全面がgrass.png連結タイルで描画されることをスクリーンショットで確認。Playwright実行時エラーなし。
+- 調整: 全体表示を少し拡大（camera zoom 1.25x）。worldToScreen・可視範囲計算・プレイヤー描画サイズへ反映。
+- 変更: やんさん画像の透明余白（各方向10px）を前提に、drawImageのソース矩形を内側切り抜きして描画。
+- 変更: 切り抜き後の実体サイズを基準に影サイズを再調整。
+- 変更: プレイヤーに円形ヒットボックス（半径14 world units）を付与し、ワールド端で当たり判定を適用。
+- 変更: render_game_to_text に hit_radius_world を追加。
+- 再テスト: Playwrightで移動入力を3反復、エラーなし。
+- 修正: カメラズーム時にやんさん画像が拡大しないよう、プレイヤー描画サイズと影サイズをズーム非連動へ戻した。
+- 修正: やんさんの見切れ対策として、ソース切り抜き描画を廃止し画像全体を描画する方式に戻した。
+- 変更: 影を上方向へ調整（足元に近づけるためYオフセットを縮小）。
+- 変更: 草タイルをgrass1..5のバリエーション描画へ変更（座標ハッシュで決定、grass.png参照を廃止）。
+- 変更: render_game_to_textのtile_under_player.imageもgrass1..5の実際の参照パスを返すよう更新。
+- 再テスト: Playwright 2反復、エラーなし。
+- 調整: grassバリエーションの出現率を重み付け変更。grass1/2を中心にし、grass3/4/5は低頻度化。
+- 修正: grassバリエーション選択のハッシュを非線形2Dビットミックスへ変更し、斜めの規則パターンを解消。
+- 再テスト: Playwrightでスクリーンショット確認、エラーなし。
+- 追加: sickleアイテムをプレイヤー初期位置の上方向（3タイル上）に配置。
+- 追加: アイテム接触でインベントリ（9スロット）へ格納する処理を実装。
+- 追加: 画面右側に縦型9スロットUIを追加。1-9キーで選択可能。
+- 追加: 選択スロットにsickleがある場合、やんさんの手元に保持表示。
+- 追加: render_game_to_text に world_item と inventory 情報を追加。
+- テスト: Playwrightで接触取得シナリオを実行し、world_item.collected=true と slots[0]='sickle' を確認。エラーなし。
+- 変更: やんさん描画時に、選択中アイテムがsickleなら assets/sickle/<対応フレーム>.png を重ね描画するように実装。
+- 条件: side系フレームは右向き時のみオーバーレイ描画（左向き時は非表示）。
+- 変更: 既存の手持ちアイコン別描画をrenderから外し、フレーム一致オーバーレイ方式へ統合。
+- テスト: Playwrightで取得→右向き状態を確認し、inventory保持とオーバーレイ描画フローを検証。エラーなし。
+- 変更: sickleオーバーレイで、side系かつ左向き時は assets/sickle/2side_*.png を使うよう分岐追加。
+- 変更: sickleオーバーレイのプリロードに 2side_* を追加。
+- テスト: Playwrightで取得後に左向き状態を確認。state上はfacing=left/slot1=sickle、エラーなし。
+- 追加: クリック（pointerdown）で使用アクションを発動する処理を追加。
+- 追加: 選択中がsickleのときのみ、進行方向（速度/向き）に白い半円エフェクトを生成。
+- 追加: useEffectsの更新・描画・state出力(use_effects件数)を実装。
+- テスト: Playwrightで鎌取得後にクリック操作を実行。クリック直後スクショで半円エフェクト表示、stateでuse_effects=1を確認。
+- 追加: 使用時に進行方向(aimAngle)を4方向へ丸め、1マス先タイルをclippings_grass.pngへ上書きする処理を実装。
+- 変更: タイル描画を「通常grassバリエーション + tileOverrides上書き」で解決する構造に変更。
+- 追加: render_game_to_textにclipped_tiles件数を追加。
+- 修正: ファイル末尾に混入していたstate参照断片を削除（ReferenceError解消）。
+- テスト: Playwrightで使用後、stateでclipped_tiles=1・tile_under_player.image=assets/clippings_grass.pngを確認。エラーなし。
+- 追加: grass.pngの草オーバーレイを各タイル下端に揃えて描画する処理を追加。
+- 仕様: 通常はプレイヤー前面に描画。プレイヤーが画面最下部付近に来た場合のみ、プレイヤーより下層に描画。
+- 仕様: clippings_grassのタイルには草オーバーレイを描画しない。
+- 追加: grass.pngをプリロード対象に追加。
+- テスト: Playwrightで再描画確認、エラーなし。
+- 追加: index2.html に64x64ドット用スキンエディタを新規実装。
+  - yansan全フレーム一覧表示（サムネイル）
+  - ベースやんさん半透明表示 + 上描画レイヤー
+  - ペン(1px固定) / 塗りつぶし / 消しゴム
+  - 右クリック押下中スポイト（透明取得で消しゴム）
+  - Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z でUndo/Redo
+  - カラーピッカー（SV+Hue）、カラーセット、お気に入り(+保存)
+  - このアイテムの色抽出（assets/<item>およびassets/<item>/*.png）
+  - skin選択/新規/フレーム保存/全保存UI
+- 追加: skin_editor_server.mjs を新規実装。
+  - GET /api/bootstrap: yansanフレーム、skinフォルダ一覧、assetFiles一覧を返却
+  - POST /api/save-skin: assets/skin/<skin>/<frame>.png へ自動保存
+  - 静的配信: / で index2.html
+- 修正: index2.html に空faviconを設定し不要404を抑止。
+- 修正: assetFiles存在チェックを導入し、存在しない画像リクエストを回避（404抑止）。
+- テスト: skin_editor_server起動後、Playwrightクライアントでindex2.htmlを実行。errorsファイル生成なしを確認。
+- 修正: index2.html のCORS対策として file:// 直開き時のオフライン初期化を追加（fetchしない）。
+- 仕様: file://時は保存ボタンを無効化し、ローカルサーバー起動案内を表示。
+- 追加: DEFAULT_FRAMES を定義し、オフラインでも全フレーム編集UIを出せるようにした。
+- 修正: saveFrameでofflineMode時は明示エラーにするよう変更。
+- 調整: index2の配色/背景を output/test/index copy4.html のトーン（濃青系）へ寄せた。
+- テスト: skin_editor_server経由でPlaywright実行、errorsファイル生成なしを確認。
+- 修正: index2.html の file:// 保存ハンドル復元処理を index copy4 方式へ調整。
+  - tryRestoreOutputRootHandle で `queryPermission` 後、`requestPermission` も実施するよう変更。
+  - 復元ハンドルを assets ルートへ正規化して保持するよう変更。
+- 修正: 保存先選択時に assets フォルダ（または assets を含む親）チェックを追加。誤ディレクトリ選択時は案内表示。
+- 修正: init の初期化順を調整し、file:// 復元で取得した skin 一覧が boot 値で上書きされる不具合を解消。
+- 修正: file:// での色抽出時 `getImageData` の SecurityError を try/catch で吸収し、空配列フォールバックに変更。
+- 修正: offlineBootstrap から存在しない `assets/sickle/<frame>.png` の参照を削除。
+- テスト: Playwright client で file:// の index2.html を実行（output/web-game-index2-file）。
+  - 重大エラー（SecurityError）は解消を確認。
+  - なお console.error の `ERR_FILE_NOT_FOUND` が1件残る（どのURLかは client 標準出力では特定不可）。
+- UI変更: index2.html の左パネルを copy4 参考に寄せ、アイテム選択をドロップダウンから縦スクロールリストへ変更。
+- 追加: `+` ボタン（addSkin）で現在入力名のアイテムを追加し、そのまま編集対象として読み込む機能を実装。
+- 維持: アイテム名テキスト入力での名前変更運用は継続（読み込みボタンで既存/新規どちらも対応）。
+- 変更: 新規クリア時も未登録名ならリストへ追加し、アクティブ表示を更新。
+- テスト: Playwright clientでfile://のindex2.htmlを起動し、pageerrorなしを確認（ERR_FILE_NOT_FOUNDの既知1件は継続）。
+- 修正: `+` 追加が効かない問題に対応。
+  - addSkinで必ず追加できるよう `uniqueSkinName()` を導入し、重複時は `_2`, `_3`... を自動付与。
+  - Enterキーでもアイテム読込/作成できるよう `skinName` 入力にキーハンドラを追加。
+- 修正: スポイト機能を copy4 の挙動に寄せて改善。
+  - 右クリック時に `pickColorAt()` で色取得。
+  - まずオーバーレイ（描画レイヤー）を取得し、透明なら表示キャンバスを試行、透明なら消しゴムへ。
+- UI簡素化: 左側ボタン数とラベルを簡略化。
+  - 読み込みボタン削除（Enter/リストクリックで代替）
+  - `空作成`, `保存`, `全保存`, `保存先(file://)` に整理
+  - ツール表記を `ペン/塗/消`、Undo/Redoを `戻す/進む` に短縮
+  - カラーピッカーの `透明` ボタンを削除
+- 追加: ショートカットキー対応を index2.html に実装。
+  - Undo/Redo: Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Cmd/Ctrl+Y
+  - 全選択: Cmd/Ctrl+A（全体選択フラグ）
+  - コピー/貼り付け: Cmd/Ctrl+C, Cmd/Ctrl+V
+    - まず内部クリップボード（レイヤー）で確実動作
+    - 可能な環境では system clipboard の image/png 読み書きにも対応
+  - 左右反転: Cmd/Ctrl+F
+  - 上下反転: H
+  - 全削除: Delete / Backspace（入力欄フォーカス時は除外）
+  - 保存: Cmd/Ctrl+S（現在フレーム保存ボタン動作）
+- 追加関数: clearLayer / flipLayerHorizontal / flipLayerVertical / isTypingElement / copyCurrentFrame / pasteToCurrentFrame
+- テスト: file:// の index2.html を Playwright client で起動し、追加後の実行時エラーがないことを確認（既知の ERR_FILE_NOT_FOUND 1件は継続）。
+- 追加: アイテム一覧の右クリックコンテキストメニューを実装。
+  - `削除` / `止める` を表示。
+  - `削除` は一覧から該当アイテムを削除。
+  - file:// かつ保存先権限がある場合は `assets/skin/<item>` フォルダも再帰削除。
+  - 外側クリック/スクロール/リサイズでメニューを閉じる。
+- 修正: フレーム/服の切替で未保存編集が消える問題に対応。
+  - `app.skinDrafts` を導入し、服ごとのレイヤー状態をメモリ保持。
+  - 服切替時に現在服のドラフトを保存し、切替先にドラフトがあればそれを復元。
+  - ドラフトがない場合のみディスク読込し、読込結果をドラフトとして登録。
+  - 右クリック削除時は対象服のドラフトも削除。
+  - `空作成` 直後の状態もドラフトへ登録。
+- 追加: フォルダ削除を Undo/Redo 対象に拡張。
+  - 削除時に `delete_skin` レコードを作成し、`skinDeleteUndoStack` へ積む。
+  - Undoで一覧復元 + メモリ内ドラフト復元。
+  - file:// で実フォルダを削除していた場合、Undoで `assets/skin/<name>` を再生成（保持レイヤーを書き戻し）。
+  - Redoで再削除。
+  - Undo/Redo ボタンおよび Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z / Cmd/Ctrl+Y から実行可能。
+- 不具合修正: 「書いたpxが見えなくなる」原因を修正。
+  - 服切替ハンドラで `app.skinName` を先に更新していたため、ドラフト保存先がずれて別服データを上書きしていた。
+  - `loadSkinFrames(skinName, previousSkinName)` を導入し、保存元スキン名を明示して保持するよう修正。
+  - 一覧クリック/追加/Enter読込での先行 `app.skinName` 更新を除去。
+  - 削除/削除Undo経路も `beforeActive` を渡して保持先がずれないよう修正。
+- game.js 更新:
+  - アイテム定義を拡張し、`sickle` に加えて `hoes` を追加（icon + overlayFolder）。
+  - 鎌/くわオーバーレイ参照先を `assets/skin/<item>/<frame>.png` に変更。
+  - 左向き side は `2side_*` を優先参照する既存ルールを `sickle/hoes` 共通化。
+  - ワールド配置を単一 `worldItem` から `worldItems` 配列へ変更し、鎌 + くわを配置/拾得可能に。
+  - 使用アクションは `sickle` と `hoes` の両方で有効化。
+  - render_game_to_text に `world_items` 配列を追加（互換のため world_item も維持）。
+  - プリロードを `assets/skin/sickle` / `assets/skin/hoes` へ変更。
+- タイトルUI調整: panel/tab の描画をスケール対応タイル描画へ変更。
+  - `drawPanelFrame(x,y,w,h,scale)` / `drawTabButton(rect,label,on,scale)` を導入。
+  - 画像を引き伸ばさず、整数スケール + タイル繰り返しで描画。
+- タイトル画面サイズ調整:
+  - パネルをタイル単位で大きくし、分割数（タイル数）を増加。
+  - スタートボタンをタイル基準サイズへ変更して、文字はみ出しを解消。
+- 検証: output/web-game-title-check/shot-0.png で見た目確認済み。
+- 追加: セーブ/ロード基盤をゲーム本編へ統合。
+  - `SAVE_STORAGE_KEY = yansan_farm_save_v1` を使用し、player/camera/inventory/worldItems/tileOverrides を保存・復元。
+  - `AUTOSAVE_INTERVAL = 5` 秒でオートセーブ実行（play中のみ）。
+- 追加: モード制御を拡張 (`title` / `play` / `pause`)。
+  - `Esc` / `P` で play<->pause を切替。
+  - pause/title遷移時に入力状態をクリアする `setMode` を導入。
+- 追加: タイトルUIに `終了` ボタンを追加（`tryCloseTab()` 呼び出し）。
+- 追加: ポーズUIを実装（panel/tab画像を使用）。
+  - ボタン: `セーブ` / `ロード` / `タイトルへ` / `ゲームへ`
+  - クリック判定は `hot` / `pressed` をID文字列で管理。
+- 変更: updateは `mode === play` の時のみ進行し、title/pauseでは時間停止。
+- 変更: マウスカーソルは play中のみ非表示、title/pauseでは表示。
+- 変更: `render_game_to_text` のトップレベルに `mode` を追加。
+
+テスト:
+- Playwright client 実行:
+  - `node ~/.codex/skills/develop-web-game/scripts/web_game_playwright_client.js --url http://127.0.0.1:4173/index.html --actions-file /tmp/webgame-actions.json --iterations 2 --pause-ms 250 --screenshot-dir output/web-game-savepause`
+  - スクリーンショット確認: `output/web-game-savepause/shot-0.png`
+- 追加の手動Playwright検証（NODE_PATHでplaywright参照）:
+  - title->start, `P` pause, `save`, `resume`, 移動後 `load`, `titleへ` を確認。
+  - 結果: `modePause1=pause`, `modeResume1=play`, `hasSave=true`, `modeResume2=play`, `modeTitle=title`。
+  - 位置復元も確認: `xSaved=1194.62`, `xMoved=1071`, `xLoaded=1197.07`。
+- 追加: クラムボン栽培システムを実装。
+  - 新アイテム: `clambon_seed`, `clambon`, `big_clambon` を `ITEMS` に追加。
+  - 新作物画像参照: `assets/clambon/clambon1..6.png`。
+  - 新ワールド配置: `clambon_seed` を初期スポーン付近に追加（他ツール同様に接触取得）。
+- 実装: 植え付け/成長/収穫ロジック。
+  - 種を持って左クリック使用時、前方1マスが `dirt*` タイルのときのみ植え付け。
+  - 植えると seed は消費。
+  - 成長段階は 1→2→3→(4 or 6)→5。
+  - `6` はレア大実ルート（3段階目到達時に12%）。
+  - 右クリックで前方1マスの成熟作物(4/5/6)を収穫。
+  - 収穫報酬: stage6 は `big_clambon`、それ以外は `clambon` を inventory に追加。
+- 追加: 作物描画 `drawCrops()` を導入。
+- 追加: `contextmenu` を抑止し、右クリック収穫を有効化。
+- 変更: 作物データを save/load 対象に追加。
+  - `state.crops` を `localStorage` へ保存。
+  - ロード時は正規化して復元。
+- 変更: 手持ちオーバーレイは `overlayFolder` があるアイテムだけ描画するように修正。
+
+テスト:
+- 構文チェック: `node --check game.js`。
+- Playwright手動シナリオ（NODE_PATH 経由）で確認:
+  - sickle/hoes/clambon_seed の取得成功。
+  - 1マス前のタイルで `sickle -> hoes -> seed` で植え付け成功（`crops.count: 1`）。
+  - `window.advanceTime(30000)` 後に右クリック収穫成功（`crops.count: 0`）。
+  - inventory に `clambon` 追加を確認。
+- 変更: クラムボン種ドロップを確率化。
+  - 草刈り時の種ドロップを `30%` (`Math.random() < 0.3`) に変更。
+- 変更: `clambon_seed` をスタック可能に。
+  - スロット表現を後方互換で拡張（従来文字列 + スタック用 `{kind,count}`）。
+  - pickup時は既存seedスロットへ加算。
+  - 使用時（植え付け時）は1個だけ消費。
+  - save/load時にinventoryを正規化。
+  - インベントリUIでスタック数を右下表示。
+  - render_game_to_textのinventory.slotsを `{kind,count}` 形式で出力。
+- テスト:
+  - `node --check game.js` 成功。
+  - 自動操作で草刈り後にseedドロップが発生することを確認（確率テストは `Math.random=()=>0.1` で強制）。
+- 変更: スタック対象を拡張。
+  - `TOOL_ITEMS = {sickle, hoes}` を導入し、ツール以外（seed / clambon / big_clambon 等）はすべてスタック。
+  - inventory slotの正規化を強化（文字列・{kind,count} の後方互換）。
+  - pickup時は同種スタックへ加算、使用時は1個消費。
+- 追加: `E` でインベントリ画面を開閉するモード (`mode = inventory`)。
+  - 画面上に3x3スロットを表示。
+  - クリックでそのスロットのアイテムを「現在選択中スロット」へ移動（入れ替え）。
+  - inventory中も数字キー(1-9)で選択スロット変更可能。
+- テスト:
+  - `node --check game.js` 成功。
+  - Playwrightで `play -> E -> inventory -> E -> play` 遷移確認。
+- 変更: インベントリ画面を「上側 3x9 保管欄 + 右側 9 スロット」に再設計。
+  - `inventory.bag` (27枠) を追加し、save/load対応。
+  - `E` で開くインベントリでドラッグ&ドロップ移動を実装。
+  - ドロップ時はスタック可能同種なら自動マージ、異種は入れ替え。
+  - ドラッグ中にモード切替した場合は元スロットへ返却してロスト防止。
+- 変更: アイテム取得ロジックを quick(9) + bag(27) 対応へ拡張。
+  - スタックアイテムは既存スタック優先、次にbag空き、最後にquick空き。
+  - ツールは quick優先、満杯時のみbagへ。
+- 修正: skinオーバーレイのプリロードで `overlayFolder` がないアイテムをスキップ。
+
+テスト:
+- `node --check game.js` 成功。
+- Playwright検証: seed取得後、インベントリで bag(上) -> quick(右) へドラッグし、`render_game_to_text` で移動を確認。
+- 変更: インベントリ画面を拡大し、パネル画像フレームを廃止。
+  - `drawInventoryScreen` は半透明暗幕 + 27マス(3x9)のみ表示。
+  - 右側9スロットは既存 `drawInventoryUI` をそのまま利用（E中も表示）。
+- 変更: `drawInventoryUI` で右側スロット矩形を常時 `inventoryUi.quickRects` に反映。
+- 変更: render順序を調整し、inventoryモード時は
+  1) 27スロット表示
+  2) 既存右側9スロット表示
+  の順で描画。
+- 変更: クラムボン収穫挙動を調整。
+  - 収穫時に作物を削除せず `stage=3` / `timer=0` に戻す。
+  - 収穫物は即時インベントリ加算せず、作物タイル周辺へドロップして拾う方式へ変更。
+  - ドロップ内容: `clambon` または `big_clambon` を1つ + `clambon_seed` をランダム最大3個(0..3)。
+  - ドロップ直後の即時取得を防ぐため `pickupDelay` を worldItem に追加。
+- 変更: worldItems の save/load に `pickupDelay` を追加。
+- 変更: クラムボン成長を「実時間(現在時刻)基準」へ移行。
+  - 各作物に `plantedAtMs` / `harvestAtMs` を保持し、`harvestAtMs` 到達で成熟。
+  - 1回の成長サイクルを固定10分 (`CLAMBON_FULL_GROW_MS = 600000`) に設定。
+  - ステージは描画時に現在時刻との差分から算出（軽量化のため毎フレームmutateしない）。
+  - 旧セーブの `stage/timer` 形式はロード時に新形式へフォールバック変換。
+- 変更: 収穫後リセット時も再び10分サイクルで再成長するように調整。
+- 追加: 左上に現在時刻/次の成熟時刻を表示するHUDを追加。
+- 追加: `render_game_to_text` に `current_time_*` / `next_harvest_at_*` を追加。
+- 追加: セーブデータを3スロット化。
+  - ストレージキーを `yansan_farm_save_v2` に変更。
+  - 形式: `{ slots[3] = { name, totalPlaySeconds, updatedAt, payload }, lastSlot }`。
+  - 旧 `v1` 単一セーブは初回読み込み時に slot1 へ自動移行。
+- 追加: タイトルフローを2段階化。
+  - タイトルの「スタート」で `title_slots` 画面へ遷移。
+  - 横並び3カード表示（データ名/プレイ記録/各スタート）。
+  - データ名はカード内で直接編集（クリックして入力、Enterで確定）。
+- 追加: プレイ記録（プレイ時間）管理。
+  - 選択中セーブスロットに対して `currentSlotPlaySeconds` を play中に加算。
+  - 保存時に各スロットの `totalPlaySeconds` へ反映。
+- 追加: 新規スロット開始時の `resetGameplayState` を実装。
+  - データが空スロットなら初期状態で開始。
+  - 既存スロットならそのデータをロードして開始。
+
+テスト:
+- `node --check game.js` 成功。
+- Playwright確認:
+  - title -> title_slots 遷移
+  - 名前編集（クリック入力）
+  - 各カードのスタートで play モードへ遷移
+- 追加: `index3` をマップ作成ツールとして再実装。
+  - 対応タイルを `grass1~5` と `barrier1~6` のみに限定。
+  - カメラ移動は `WASD`。
+  - 左クリックで塗り、右クリックで `grass1` に戻す。
+  - 上部タブで「ブロック / タイル追加」を切替。
+  - タイル追加タブで `+` により新規タイル名と画像パスを追加。
+- 追加: `Cmd/Ctrl+S` で保存。
+  - `terrain.js` と `tile.js` を同時出力。
+  - `showDirectoryPicker` が使える場合は選択フォルダへ自動生成。
+  - 未選択時は `tile.js`/`terrain.js` をダウンロード保存にフォールバック。
+- 追加: index側で `tile.js` / `terrain.js` を先に読み込む仕組み。
+  - `index.html` で optional fetch+eval 後に `game.js` をロード。
+- 追加: `game.js` に外部地形読込フック。
+  - `window.TILE_DATA` と `window.TERRAIN_DATA` があれば `getTileImage` で優先利用。
+  - 無い場合は従来ロジック（grassバリエーション）へフォールバック。
+
+テスト:
+- `node --check index3.js` / `node --check game.js` 成功。
+- Playwrightで `index3.html` 起動確認。
+- Playwrightで `index.html`（tile/terrain未配置状態）起動確認。
+- index3拡張（v3）後のgame側追従を実施。
+  - `window.TERRAIN_DATA` の判定を配列限定からオブジェクト判定へ変更。
+  - `terrain.js` の疎形式 `sparse` を `getTileImage()` で参照できるように対応。
+  - `default` タイルIDへフォールバックする処理を追加。
+  - `origin.x / origin.y` を考慮した座標変換（`localX/localY`）を追加。
+- 外部地形サイズがある場合、`WORLD.width/height` を `terrain.width/height * tileSize` に同期するよう変更。
+  - 大きい地形をindex3で作成しても、index本編で全域を扱えるようにした。
+- index.htmlに空faviconを追加（404ノイズ低減目的）。
+- 検証:
+  - `node --check game.js` / `node --check index3.js` ともに成功。
+  - Playwright clientで `index.html` を起動してスクリーンショット確認（title画面表示正常）。
+  - 備考: console.error の 404 が1件残存（既存リソース由来の可能性あり、今回変更起因ではない）。
+- index.htmlの地形読込を修正（未読込問題対応）。
+  - `fetch + eval` を撤去し、`<script src="tile.js">` / `<script src="terrain.js">` / `<script src="game.js">` の軽量構成へ変更。
+  - `tile.js/terrain.js` が無い場合は `localStorage(yansan_index3_editor_v3)` から `TILE_DATA/TERRAIN_DATA` を復元するフォールバックを追加。
+- 補足確認: 現在プロジェクト直下に `tile.js` / `terrain.js` は存在しなかったため、従来は本編で新地形が読まれない状態だった。
+- 検証: Playwright起動確認OK、`node --check game.js` OK。
+- index3: 保存先の先行指定→自動上書きフローを追加。
+  - 保存先ハンドルを IndexedDB に保存/復元する実装を追加（`yansan_index3_handles`）。
+  - 起動時に保存先ハンドルを自動復元し、権限があればそのまま利用可能。
+  - `保存先選択` 後に即 `tile.js` / `terrain.js` を自動上書き保存。
+  - 以後の編集（塗り/消し、サイズ変更、タイル追加、初期化）は自動保存デバウンスで上書き。
+  - `Cmd/Ctrl+S` と保存ボタンは、保存先未設定時に先に保存先選択へ誘導し、その後上書き保存。
+  - 旧挙動のダウンロードフォールバックは削除（指定先へ上書きを優先）。
+- index3: 初期地点タイル設置と5レイヤー編集を追加。
+  - レイヤー切替UI（L1〜L5）を追加。通常タイル運用はL1を前提（L1デフォルト=grass1、L2-5デフォルト=空）。
+  - 初期地点ツールを追加し、タイル上クリックでスポーン地点を設定可能にした。
+  - エディタ保存形式を `layerCells[5] + spawn` に拡張（互換のため `cells` も維持）。
+  - terrain.js出力を `layers` + `spawn` 対応に拡張（従来 `sparse/default` も併存）。
+  - 描画はレイヤー1→5の順で合成し、スポーン地点マーカーを表示。
+- index.html: localStorageフォールバック読込で `layerCells/layers/spawn` を復元可能に拡張。
+- game.js: index3拡張フォーマット読込対応。
+  - `TERRAIN_DATA.layers` をレイヤー別に参照できるようにし、地面はL1、L2〜L5は上描画として表示。
+  - `TERRAIN_DATA.spawn` を初期地点として利用（新規開始時のplayer/camera/worldItem基準に反映）。
+  - `render_game_to_text` に `map_spawn_tile` を追加。
+- 検証:
+  - `node --check index3.js` / `node --check game.js` 成功。
+  - Playwrightで index3/index の起動確認済み。
+- index本編: セーブデータ削除を追加。
+  - タイトルのセーブスロット画面に各カードごと `削除` ボタンを追加。
+  - 削除クリックで対象スロットの `payload` を null化し、プレイ時間を0へリセット（名前は保持）。
+  - hover/pressed状態を `hotDeleteIndex/pressedDeleteIndex` で管理し、既存スタートボタンと干渉しないようにした。
+- 検証:
+  - `node --check game.js` 成功。
+- index3: タイル配置時の向き（横/縦）を追加。
+  - サイドバーに `横/縦` トグルを追加し、配置セルを `{id, dir}` 形式で保持。
+  - 保存データ（local + terrain.js）の layer sparse でも `{id,dir}` を保持。
+- index3: 既存タイルの右クリック編集を追加。
+  - コンテキストメニューに `編集` を追加。
+  - 既存タイルを `タイル追加` パネルへ読み込み、更新時はID変更も反映（既配置セルの参照も追従）。
+- index.html: index3ローカルフォールバック読込を `{id,dir}` セル値対応に拡張。
+- game.js: layer2当たり判定をセル向きで分岐。
+  - `dir=h` は横柵向け（下中央帯で衝突）。
+  - `dir=v` は縦柵向け（中央縦帯で衝突）。
+  - 地形セル値を `string` / `{id,dir}` の両方で解釈する互換処理を追加。
+- index3 UX改善:
+  - パレット領域のスクロール性を改善（`#panelWrap` に `overflow-y:auto; min-height:0`）。
+- 当たり判定設定の方式を変更:
+  - 旧: 上部トグルで配置セルごとに横/縦を保持。
+  - 新: タイル編集フォームで `当たり判定: なし/横/縦/全面` を設定し、タイル定義として保存。
+  - 既存タイルの右クリック `編集` から同項目を更新可能。
+- tile.js/terrain.js 連携:
+  - `tile.js` の `tiles[]` に `collision` を出力。
+  - indexのlocalフォールバックでも `collision` を読み込むよう拡張。
+- game.js:
+  - layer2衝突は `tile.collision` を参照して判定。
+  - モード別に `none/h/v/full` を処理。
+  - 旧データ互換: セルの `dir` や `barrier*` 名からの推測をフォールバックとして維持。
+- 修正: 自分のいるタイルに柵を置いて埋まった場合、即時に近傍の非衝突位置へ押し出す処理 `pushPlayerOutIfBlocked()` を追加。
+- 変更: 柵設置処理 `placeFenceAtForwardTile()` で、設置・接続再計算後に押し出し補正を実行するようにした。
+- 安全策: 近傍に有効位置がない場合は初期スポーン位置へ退避。
+- テスト: `node --check game.js` 実行で構文エラーなし。
+- テスト: Playwrightクライアントで `index.html` を1反復実行し、スクリーンショットを確認（`output/web-game-pushout-check/shot-0.png`）。
+- 備考: `errors-0.json` に既存の404が1件記録（今回修正に直接関係しない静的リソース不足）。
+- 追加: 新ツール `soil_sifter` を実装（`assets/soil_sifter.png`）。
+  - `ITEMS` / `TOOL_ITEMS` / `USE_PREVIEW_ITEMS` / `ITEM_USE_HANDLERS` に追加。
+  - 初期スポーンに `soil_sifter` を追加（くわとハンマーの間）。
+  - `ensureRequiredToolsAvailable` と `resetGameplayState` にも追加。
+- 追加: `stone_dirt` 系タイル(1..16)を `TILE_IMAGES` に追加。
+- 仕様変更: くわ(`hoes`)の耕作を `clippings -> stone_dirt` に変更。
+- 追加: ふるい(`soil_sifter`)使用で `stone_dirt -> dirt` へ変換する処理を実装。
+- 追加: 土の見た目更新を共通化（`recalcSoilVariantAt`）。
+  - `dirt` と `stone_dirt` の両方で隣接関係に応じたバリエーション更新。
+- 維持: 植物の植え付けは `isDirtTile` 条件のまま（通常土のみ植え付け可）。
+- テスト: `node --check game.js` 通過。
+- テスト: Playwrightで起動確認（`output/web-game-soil-sifter`）。
+  - 画面確認: セーブスロット画面まで正常表示。
+  - 既存404ログ1件あり（今回追加分のロジックによる新規クラッシュなし）。
+- 追加: `index2.html` に `Assets` 編集モードを実装（既存 `Skin` モードと切替）。
+  - 左上に `Skin / Assets` モード切替ボタンを追加。
+  - Assetsモードでは `assets` 配下PNG一覧を表示・選択編集可能。
+- 追加: AssetsモードUI
+  - 画像一覧（縦スクロール）
+  - 新規画像パス入力（assets配下）
+  - 幅/高さ入力（可変サイズ）
+  - 新規作成・サイズ変更ボタン
+- 追加: 可変サイズ編集対応
+  - ペイントキャンバスを画像サイズに合わせて動的変更。
+  - ペン/塗りつぶし/移動/左右反転/上下反転/スポイト/Deleteを可変サイズで動作。
+- 追加: assets画像の読み込み/保存
+  - file:// + 保存先紐付け時、選択中 `assets/...png` へ直接保存。
+  - `assets` ディレクトリを再帰走査してPNG一覧を取得。
+- 追加: 新規画像作成
+  - 指定パス + 指定サイズで空画像レイヤを生成して即編集開始。
+- 追加: サイズ変更
+  - 現在画像のピクセルを保持しつつ新サイズへリサイズ（はみ出し切り捨て/不足透明）。
+- 補足: オンライン(`http`)モードでAPI未実装の場合、Assetsモードの保存は不可（エラーメッセージ表示）。
+- テスト: Playwright起動確認
+  - `output/index2-assets-mode-check` にスクショ/ログ出力。
+  - 新規クラッシュは確認されず。既存の404ログ1件は継続。
+- 追加: index2 Assetsモードの画像一覧をサムネイル付き表示に変更。
+  - 一覧ボタンに24x24アイコン+ファイル名を表示。
+- 追加: index2 Assetsモードにレイヤー機能を実装（無制限）。
+  - `assetDocMap` で画像ごとに `layers[]` を管理。
+  - レイヤー一覧UI（表示/非表示、アクティブ選択、追加、削除）を右パネルへ追加。
+  - 合成描画は可視レイヤーをアルファ合成してプレビュー/保存。
+- 変更: コピー動作（Assetsモード）
+  - Cmd/Ctrl+Cでアクティブレイヤーを複製して最上段へ新規レイヤー追加。
+  - Cmd/Ctrl+Vでも新規レイヤーとして貼り付け（既存レイヤーへ即統合しない）。
+- 変更: Undo/Redo（Assetsモード）
+  - レイヤー単位ではなくドキュメント全体スナップショットで戻す/進むに対応。
+  - レイヤー追加/削除/表示切替/サイズ変更/描画をUndo可能。
+- 変更: 可変サイズ編集をレイヤー構造と統合。
+  - サイズ変更時は全レイヤーを同時にリサイズ。
+- テスト:
+  - `new Function(script)` によるindex2内script構文検証OK。
+  - Playwright起動確認（output/index2-layers-check）。
+  - 既存404ログ1件は継続。
+- 追加: index3起動時の自動読込を実装。
+  - 保存先ハンドル復元後、同フォルダ内 `tile.js` / `terrain.js` を自動で読み込み。
+  - 読み込み成功時はエディタ状態へ即反映し、ローカル状態より優先。
+  - 読み込み失敗時のみ従来どおり localStorage の状態へフォールバック。
+- 追加: `load` ボタンも保存先がある場合は `tile.js/terrain.js` 読込を優先。
+- 追加関数:
+  - `readTextFile`
+  - `parseJsAssignedObject`
+  - `buildEditorStateFromProjectFiles`
+  - `loadFromSaveDirFiles`
+- 修正: 起動シーケンスを `initStartup()` 非同期初期化へ整理。
+- テスト:
+  - `node --check index3.js` 通過。
+  - Playwrightで `index3.html` 起動確認（output/index3-autoload-check/shot-0.png）。
+- 追加: index3 タイル追加UIにアニメーション設定を実装。
+  - `アニメーションON` チェック
+  - `フレーム数` 入力
+  - 自動生成パスのプレビュー表示（例: xxx1.png 〜 xxxN.png）
+- 仕様: アニメON時は、画像パス末尾の連番を基準にフレームを自動生成。
+  - 例: `assets/water1.png` + 4フレーム => `assets/water1.png..assets/water4.png`
+  - 連番パターンでない場合は追加時にエラー表示。
+- 変更: index3 の tileデータに `animation` を保持・保存・再読込するよう変更。
+  - `toTileJs()` が `animation: { enabled, frameCount, frames[] }` を出力。
+  - `applyEditorState` / 保存先フォルダ自動読込でも animation を維持。
+- 変更: index3 キャンバス描画でもアニメタイルが再生されるよう対応。
+- 変更: game.js 側で TILE_DATA の `animation` を読み込み、タイル描画時にアニメ再生。
+- テスト:
+  - `node --check index3.js && node --check game.js` 通過。
+  - Playwright起動確認: `index3` / `index` ともに errors-0 なし。
+- 追加: `index4.html` / `index4.js` を新規作成。
+  - `index copy3.html` の雰囲気に寄せたタイル当たり判定エディタUI。
+  - タイル一覧（アイコン付き）から `none / h / v / full` を編集可能。
+  - 中央プレビューでタイル画像 + 判定オーバーレイを確認可能。
+- 追加: 保存先フォルダハンドル復元（index3と同じDBキー）
+  - 起動時: 復元したフォルダの `tile.js` を自動読込
+  - 読込ボタン: 保存先 `tile.js` 優先、失敗時は同フォルダ `tile.js` を読込
+- 追加: 保存
+  - `tile.js` を上書き保存
+  - Cmd/Ctrl+S 対応
+  - タイルの `animation` 情報は保持したまま collision だけ更新可能
+- テスト:
+  - `node --check index4.js` 通過
+  - Playwright起動確認 `output/index4-collision-check/shot-0.png`
+- 変更: index4 を `h/v/full` モード方式から廃止し、16x16ドット塗り方式へ全面切替。
+  - ツール: 描く / 消す / 全塗り / 全消し
+  - 左ドラッグで塗り、右ドラッグで消し（copy3ライク）
+- 追加: タイルごとの `collisionMask`（16行のビット配列）を編集・保存。
+  - 既存データに `collisionMask` が無い場合は旧 `collision` から初期マスクを生成。
+  - 保存時は `collisionMask` を tile.js に出力。
+- 互換: `collision` フィールドも推定値で残す（現状はマスクが空=none, それ以外=full）。
+- テスト:
+  - `node --check index4.js` 通過
+  - Playwright起動確認 `output/index4-mask-check/shot-0.png`（エラーファイルなし）
+- 追加: game.js に「レイヤー2タイルの地面影」描画を実装。
+  - 影は layer1 地面描画後・layer2描画前に描画。
+  - 影位置は各layer2タイル下部を基準に、太陽方向の逆側へオフセット。
+- 追加: 太陽位置パラメータ `SUN` と、時間経過 `state.time` ベースの太陽方位/高度計算。
+  - 方位・高度に応じて影の長さ/濃さが変化。
+- テスト:
+  - `node --check game.js` 通過
+  - Playwright起動確認 `output/index-shadow-check/shot-0.png`（errorsなし）
+- 修正: レイヤー影が出ないケースに対応。
+  - 地面影描画を layer2 固定から layer2〜5 対象へ拡張。
+  - 影の描画を silhouette キャッシュ依存から「元タイル画像を brightness(0) + multiply で投影」方式に変更。
+  - これにより file:// / tainted 条件でも影描画が継続。
+- テスト: Playwrightでタイトル→セーブ選択→プレイへ進め、`output/web-game-shadow-check4/shot-0.png` で影表示を確認。
+- 修正: 連結タイルの影がタイル単位で途切れる問題に対応。
+  - 影描画を「各タイル個別投影」から「連結セル境界を押し出す連続ポリゴン方式」に変更。
+  - layer2〜5 の占有セルをまとめ、内部エッジは無視・外周エッジのみ側面影を生成。
+  - 隣接タイル同士の頂点が繋がるため、影が一体で変形するようになった。
+- テスト: output/web-game-shadow-check5/shot-0.png で連結影が途切れないことを確認。
+- 修正: 透明タイル影の不自然さと影遷移の硬さを改善。
+  - 影を2段構成に変更: (1) 透明を尊重したシルエット投影、(2) fullTileのみ地面暗化オーバーレイ。
+  - オーバーレイは境界エッジに線形グラデーションを入れ、非影→影→非影の遷移を滑らか化。
+  - 全体の見た目調整として、ワールドに方向光+周辺減光の軽いライティングシェーダーを追加。
+- レンダーパイプライン更新: drawWorldBarriers("front") の後に drawWorldLightingShader() を適用。
+- テスト: output/web-game-shadow-check6/shot-0.png で透明タイル影と全体シェーダーを確認。
+- 修正: シルエット影を連結タイル単位で投影するよう変更。
+  - タイルごとの個別回転を廃止し、4近傍連結のコンポーネント単位で1回投影。
+  - 影キャスターは明示配置済みの fullTile のみに限定し、デフォルト面の大域影を抑制。
+- 変更: ユーザー要望に合わせ、シルエット投影を廃止して「連結領域外周の押し出し影」へ戻した。
+  - drawLayer2GroundShadows はレイヤー2〜5の明示配置タイル集合を作成し、外周エッジのみを影ベクトル方向へ押し出し。
+- 修正: プレイヤー接近/離脱で影形状が変わる問題に対し、外周判定用タイル収集範囲を画面外へ拡張。
+  - 影ベクトル長に応じた余白タイルを追加して連結判定を安定化。
+- 変更: index.html用の描画強化として game.js に疑似シェーダーパスを追加。
+  - 水面タイル(`assets/water*.png`)検出時に、反射シーン/カースティクス風のゆらぎオーバーレイを描画する `drawWaterSurfaceShader()` を追加。
+  - `drawWorldLightingShader()` を拡張し、太陽光芒(擬似ゴッドレイ)・サングロー・虹彩(色収差風)を重畳。
+  - render順に `drawWaterSurfaceShader()` を組み込み、地面描画直後に適用。
+- 仕様修正: schop使用時の土変化を「variant 1対1対応」に変更。
+  - dirt.png..dirt16.png → 対応する groove_dirt.png..groove_dirt16.png
+  - groove_dirt.png..groove_dirt16.png → 対応する hole_groove_dirt.png..hole_groove_dirt16.png
+- 変更: applySchopToForwardTile は再計算ベースではなく、画像パス変換ベースで段階遷移するよう修正。
+- 調整: 既存欠番画像参照で出ていた404を解消。
+  - `TILE_IMAGES.groove_dirt10` を `assets/groove_dirt9.png` へフォールバック。
+  - `TILE_IMAGES.hole_groove_dirt10` を `assets/hole_groove_dirt9.png` へフォールバック。
+- テスト: Playwright clientで `index.html` を title->slot->play まで操作して再検証。
+  - 出力: `output/index-shader-mcfx4/shot-0.png`, `shot-1.png`, `state-0.json`, `state-1.json`
+  - 結果: `errors-*.json` 生成なし（console errorなし）。
+  - 目視: 水面ゆらぎ/反射オーバーレイ、光芒、虹彩オーバーレイが画面上で確認できる。
+- 不具合修正: soil_sifterでstone_dirt→dirt変換した際の分裂表示を修正。
+  - recalcSoilVariantAt の連結判定で dirt系とstone_dirt系を同一グループとして扱うよう変更。
+- 調整: ライティングの違和感対応。
+  - `drawWorldLightingShader()` の光源表現を見直し、中央寄りの薄い太陽グロー感を抑制。
+  - 光条の起点を画面端寄りに調整し、右上の画面外から差し込む筋が見えるようアルファと方向を再調整。
+- テスト: Playwrightで title->slot->play まで遷移し、`output/index-shader-edge-rays6/shot-1.png` を目視確認。
+  - 結果: 光条が画面端（右上）から伸びる見た目を確認。
+- 変更: ユーザー要望に合わせて光条(レイ)を削除し、虹色のほやけるライティングを強化。
+  - `drawWorldLightingShader()` のレイ描画ループを削除。
+  - オフスクリーン光源からのソフトブルームを強化。
+  - 虹色グラデーション + 色付きハロー(暖色/寒色/緑系)を追加して虹彩感を増強。
+- テスト: Playwrightで title->slot->play を実行。
+  - 出力: `output/index-rainbow-haze2/shot-0.png`, `shot-1.png`, `state-0.json`, `state-1.json`
+  - 結果: errorsファイルなし、404なし。光条は消え、にじみ系の虹色エフェクトを確認。
+- セーブ差分化: 地形を「ベース地形ファイル + 差分パッチ」で保存する方式へ変更。
+  - 起動時にベース地形スナップショットを保持。
+  - 保存時は current と base の差分キーのみ `terrain.layersPatch` / `terrain.sparsePatch` として保存。
+  - 読込時はまずベース地形へリセットし、その後パッチを適用。
+  - 旧セーブ互換として `terrain.layers` / `terrain.sparse`（フル保存）も読み込み対応維持。
+- アイテム差分化: worldItems を「初期配置との差分」で保存する方式へ変更。
+  - 保存時: `collectedDefaultIndices` と `droppedItems` のみ保存。
+  - 読込時: 初期配置を再構築して collected を反映し、追加ドロップを合成。
+  - 旧セーブ互換として worldItems 配列（フル保存）の読み込みも維持。
+- 変更: 光エフェクトを繊細化（強すぎるにじみを抑制）。
+  - `drawWorldLightingShader()` の各ハロー/虹彩アルファを全体的に低減し、自然な強さへ調整。
+- 変更: レイヤーごとの本来色グレーディングを導入（透明部分は無変化）。
+  - `LAYER_COLOR_GRADING` を追加。
+  - `drawGrassTiles()` はレイヤー1描画時のみ `ctx.filter` で色補正。
+  - `drawUpperTileLayers()` はレイヤー2描画時のみ `ctx.filter` で色補正。
+  - 補正は `drawImage` の実ピクセルにのみ適用されるため、PNGの透明部には色が乗らない。
+- テスト: Playwrightで title->slot->play を実行し、`output/index-layergrade-subtle/shot-0.png` を確認。
+  - 結果: 光はより繊細化。レイヤー1/2タイルの色味のみ変化し、透明部への変色は見られない。
+- 変更: 昼夜サイクルをゲーム時間ではなく現実時間同期へ変更。
+  - `getSunShadowState()` をローカル時刻ベースで計算し、`morning/noon/night` を導出。
+  - 朝(6-12)・昼(12付近)・夜(18-6)で太陽高度/影長/影濃度を変化。
+- 変更: シェーダーを時間帯別プロファイル化。
+  - 朝: 少し暖色寄りの柔らかいハイライト。
+  - 昼: バランス重視のクリアな色味。
+  - 夜: 紺系（navy）の乗算ティント + 冷色ミストを追加。
+- 変更: `render_game_to_text` に `day_phase` を追加。
+- テスト:
+  - `WEB_GAME_CLIENT` はこの環境で完了待ちが不安定なケースあり（長時間ハング傾向）。
+  - ただし生成できた実ショット `output/index-daynight-sync-night2/shot-0.png` と state を確認し、22:31(JST)時点で夜トーン描画を確認。
+- 要望対応: "シェーダーが重すぎる" への対処として軽量モードを追加。
+  - `SHADER.performanceMode = true` を導入（デフォルトON）。
+  - `drawWorldLightingShader()` に fast path を追加し、多重ハロー/虹彩パスをスキップして最小限の方向光+夜ティントのみ描画。
+  - `drawWaterSurfaceShader()` に fast path を追加し、タイル毎の clip+gradient を廃止、軽量な単純ティントへ変更。
+- 確認: `node` で `game.js` 構文パースOK。
+- パフォーマンス改善: 描画ループの重い処理を削減。
+  - 太陽状態 `getSunShadowState()` を render内で1回計算し、草/上層/影/ライティングへ使い回し。
+  - 影描画は layer2 の明示配置のみ走査（2〜5レイヤー全走査を廃止）。
+  - 影/水面シェーダーに表示タイル数ガードを追加（ズームアウト時は自動スキップ）。
+  - 影走査から `getTileImage` 呼び出しを除去し、明示配置判定のみ実施。
+- 追加軽量化:
+  - `drawUpperTileLayers` を viewport 全走査から sparse 配置反復へ変更。layer2〜5 は置かれたタイルだけ描画。
+  - `drawGrassTiles` / `drawUpperTileLayers` / `drawCrops` で `worldToScreen()` の大量呼び出しをやめ、画面原点から直接スクリーン座標を計算。
+  - `drawCrops` と `drawWorldItems` に視界外カリングを追加。
+  - `updateWorldItem` はプレイヤー近傍だけ pickup 判定するよう変更。
+- 追加: 現実時間同期の昼夜サイクルを再実装。
+  - `getCurrentWorldDate()` / `getCurrentWorldTimeMs()` を追加し、HUD時刻と昼夜判定を共通化。
+  - 朝: 白寄り、夕方: オレンジ寄り、夜: 紺寄りの全画面オーバーレイを1枚描画する軽量方式に変更。
+  - 昼はオーバーレイなし。
+  - `render_game_to_text` に `debug_time_offset_hours` を追加。
+- 追加: `F8` を押している間だけ時間デバッグ可能。
+  - `F8 + D` で1時間進める。
+  - `F8 + A` で1時間戻す。
+  - `F8` を離すと実時間へ即復帰。
+- 調整: `day_phase` に `evening` を追加。
+
+テスト:
+- `node --check game.js` 成功。
+- Playwright client 実行:
+  - `node ~/.codex/skills/develop-web-game/scripts/web_game_playwright_client.js --url http://127.0.0.1:4173/index.html --actions-file /tmp/webgame-daycycle-actions.json --iterations 1 --pause-ms 150 --screenshot-dir output/web-game-daycycle`
+  - 生成物: `output/web-game-daycycle/shot-0.png`, `state-0.json`
+- 追加のPlaywright手動検証:
+  - タイトル -> セーブ枠 -> プレイへ遷移後、`F8` を保持して `D` 連打で夜化、`A` 連打で朝化を確認。
+  - `output/web-game-daycycle/play-evening.png`, `play-morning.png`, `play-night.png`, `manual-play-states.json` を生成。
+  - `manual-play-states.json` で `11:45 -> 19:45 -> 23:45 -> 11:46` に戻ることを確認。
+- 追加: index4 に `側面タイル` チェックを追加。
+  - tile.js 保存時に `sideTile: true/false` を保持。
+  - タイル一覧にも `側面` フラグ表示を追加。
+- 変更: 本編側で `tile.js` の `sideTile` を読込。
+  - レイヤー2描画時、通常タイルは従来どおり少し明るく、`sideTile` は逆に少し暗く描画。
+- 追加: index4 にプレイヤー当たり判定編集モードを実装。
+  - `やんさん` ボタンで player フレーム一覧へ切替。
+  - front/back/side の idle/run 全フレームごとに 16x16 マスクを編集可能。
+  - 保存先は `tile.js` の `playerCollision.frames[frameName].collisionMask`。
+- 変更: 本編で `tile.js` のプレイヤーフレーム当たり判定マスクを読込。
+  - 現在の表示フレームに応じて衝突プローブを生成し、layer2 タイルとの衝突判定へ使用。
+  - データ未設定時は楕円ベースのデフォルト当たり判定を使用。
+- 修正: プレイヤー当たり判定マスクのワールド反映サイズを調整。
+  - 以前は `hitRadiusWorld` ベースで小さく投影していたため、編集差分が出にくかった。
+  - 現在はプレイヤースプライト実寸 (`PLAYER.drawHeight` + 実画像比率) に合わせてマスクをワールドへ投影。
+  - 左向き side は衝突マスクも左右反転。
+- 追加: `F3` デバッグ表示。
+  - visible な layer2 当たり判定を赤、現在プレイヤーフレーム当たり判定を水色で描画。
+  - `render_game_to_text` に `debug_collision_view` を追加。
+- テスト:
+  - `node --check game.js`
+  - Playwright client 実行: `output/web-game-collision-debug/shot-0.png`, `state-0.json`
+  - 手動Playwright検証: title->slot->play->F3 で `output/web-game-collision-debug/f3-debug.png`, `f3-debug-state.json` を生成。
+- 追加: `layer 1.5` を本編とマップエディタに追加。
+  - レイヤー順を `1, 1.5, 2, 3, 4, 5` に拡張。
+  - index3 のレイヤーボタン/UI/保存データ/terrain.js 出力を対応。
+  - index.html の file:// ローカルフォールバックも `layer 1.5` 読込に対応。
+  - game.js 側は実レイヤーIDで解決するよう変更し、`terrain.layers[].index` が `1.5` でも読めるようにした。
+  - 旧 5 レイヤー地形 (`1,2,3,4,5`) は互換読込を維持。
