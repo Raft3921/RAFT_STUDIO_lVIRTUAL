@@ -320,6 +320,7 @@ import {
       return planted;
     },
   };
+  const UNIQUE_TOOL_KINDS = new Set(["sickle", "schop", "hoes", "soil_sifter", "hammer"]);
 
   const keys = new Set();
   const imageCache = new Map();
@@ -651,6 +652,7 @@ import {
       vy: 0,
     },
     worldItems: buildDefaultWorldItems(),
+    collectedToolKinds: new Set(),
     inventory: {
       slots: Array(9).fill(null),
       bag: Array(27).fill(null),
@@ -1001,6 +1003,41 @@ import {
     return normalized;
   }
 
+  function normalizeCollectedToolKinds(src) {
+    const out = new Set();
+    const arr = Array.isArray(src) ? src : [];
+    for (const kind of arr) {
+      const k = String(kind || "");
+      if (UNIQUE_TOOL_KINDS.has(k)) out.add(k);
+    }
+    return out;
+  }
+
+  function rebuildCollectedToolKindsFromState() {
+    const set = new Set();
+    for (const entry of state.inventory.slots) {
+      const kind = getSlotKind(entry);
+      if (UNIQUE_TOOL_KINDS.has(kind)) set.add(kind);
+    }
+    for (const entry of state.inventory.bag) {
+      const kind = getSlotKind(entry);
+      if (UNIQUE_TOOL_KINDS.has(kind)) set.add(kind);
+    }
+    for (const it of state.worldItems) {
+      if (!it || !it.collected) continue;
+      if (UNIQUE_TOOL_KINDS.has(it.kind)) set.add(it.kind);
+    }
+    state.collectedToolKinds = set;
+  }
+
+  function applyCollectedToolVisibility() {
+    if (!(state.collectedToolKinds instanceof Set)) state.collectedToolKinds = new Set();
+    for (const it of state.worldItems) {
+      if (!it || !UNIQUE_TOOL_KINDS.has(it.kind)) continue;
+      if (state.collectedToolKinds.has(it.kind)) it.collected = true;
+    }
+  }
+
   function getSelectedItemKind() {
     return getSlotKind(state.inventory.slots[state.inventory.selectedSlot]);
   }
@@ -1271,6 +1308,9 @@ import {
           vy: state.camera.vy,
         },
         worldItems: buildWorldItemsSaveData(),
+        characterProgress: {
+          collectedTools: [...state.collectedToolKinds],
+        },
         inventory: {
           slots: [...state.inventory.slots],
           bag: [...state.inventory.bag],
@@ -1314,6 +1354,7 @@ import {
       while (state.inventory.bag.length < 27) state.inventory.bag.push(null);
     }
     state.inventory.selectedSlot = clamp(Number(root.inventory.selectedSlot) || 0, 0, 8);
+    state.collectedToolKinds = normalizeCollectedToolKinds(root.characterProgress?.collectedTools);
 
     if (Array.isArray(root.worldItems) && root.worldItems.length) {
       // Backward compatibility for old full world item save format.
@@ -1328,6 +1369,8 @@ import {
     } else {
       applyWorldItemsSaveData(root.worldItems);
     }
+    if (!state.collectedToolKinds.size) rebuildCollectedToolKindsFromState();
+    applyCollectedToolVisibility();
 
     state.tileOverrides = objectToMap(root.tileOverrides);
     worldTilesDirty = true;
@@ -1375,6 +1418,7 @@ import {
       { kind: "hammer", dx: WORLD.tileSize * 4 },
     ];
     for (const req of required) {
+      if (state.collectedToolKinds.has(req.kind)) continue;
       if (hasInventoryItemKind(req.kind)) continue;
       if (hasWorldItemKind(req.kind)) continue;
       state.worldItems.push({
@@ -1491,6 +1535,7 @@ import {
       vy: 0,
     };
     state.worldItems = buildDefaultWorldItems();
+    state.collectedToolKinds = new Set();
     state.inventory.slots = Array(9).fill(null);
     state.inventory.bag = Array(27).fill(null);
     state.inventory.selectedSlot = 0;
@@ -1924,6 +1969,8 @@ import {
         const slotIndex = addInventoryItem(item.kind);
         if (slotIndex >= 0) {
           item.collected = true;
+          if (UNIQUE_TOOL_KINDS.has(item.kind)) state.collectedToolKinds.add(item.kind);
+          saveCharacterState(true);
         }
       }
     }
