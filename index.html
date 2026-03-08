@@ -17,27 +17,27 @@
       canvas { width: 100vw; height: 100vh; display: block; cursor: none; touch-action: none; }
       #mobile-ui { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
       #mobile-ui.hidden { display: none; }
-      .dpad { position: absolute; left: 12px; bottom: 12px; width: 160px; height: 160px; pointer-events: auto; }
+      .dpad { position: absolute; left: 10px; bottom: 80px; width: 124px; height: 124px; pointer-events: auto; }
       .pad-btn {
-        position: absolute; width: 52px; height: 52px; border: 2px solid rgba(245,248,255,0.55);
+        position: absolute; width: 40px; height: 40px; border: 2px solid rgba(245,248,255,0.55);
         background: rgba(28,42,36,0.62); color: #f5f7fb; border-radius: 10px; font-weight: 700; font-size: 18px;
         backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); touch-action: none;
         padding: 0;
       }
       .pad-btn:active { background: rgba(68,98,84,0.78); }
       .pad-btn img { width: 100%; height: 100%; display: block; image-rendering: pixelated; pointer-events: none; }
-      .pad-up { left: 54px; top: 0; }
-      .pad-left { left: 0; top: 54px; }
-      .pad-right { right: 0; top: 54px; }
-      .pad-down { left: 54px; bottom: 0; }
-      .actions { position: absolute; right: 12px; bottom: 12px; display: grid; gap: 8px; pointer-events: auto; }
+      .pad-up { left: 42px; top: 0; }
+      .pad-left { left: 0; top: 42px; }
+      .pad-right { right: 0; top: 42px; }
+      .pad-down { left: 42px; bottom: 0; }
+      .actions { position: absolute; right: 10px; bottom: 84px; display: grid; gap: 8px; pointer-events: auto; }
       .action-btn {
         min-width: 98px; height: 48px; border-radius: 10px; border: 2px solid rgba(245,248,255,0.55);
         background: rgba(28,42,36,0.62); color: #f5f7fb; font-weight: 700; font-size: 14px; touch-action: none;
       }
       .action-btn:active { background: rgba(68,98,84,0.78); }
       .quickbar {
-        position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; display: grid;
+        position: absolute; left: 50%; transform: translateX(-50%); bottom: 22px; display: grid;
         grid-template-columns: repeat(9, minmax(24px, 1fr)); gap: 4px; width: min(88vw, 520px); pointer-events: auto;
       }
       .slot-btn {
@@ -64,15 +64,15 @@
         <button id="mobile-inventory" class="action-btn">インベントリ</button>
       </div>
       <div class="quickbar" id="mobile-quickbar">
-        <button class="slot-btn" data-slot="1">1</button>
-        <button class="slot-btn" data-slot="2">2</button>
-        <button class="slot-btn" data-slot="3">3</button>
-        <button class="slot-btn" data-slot="4">4</button>
-        <button class="slot-btn" data-slot="5">5</button>
-        <button class="slot-btn" data-slot="6">6</button>
-        <button class="slot-btn" data-slot="7">7</button>
-        <button class="slot-btn" data-slot="8">8</button>
-        <button class="slot-btn" data-slot="9">9</button>
+        <button class="slot-btn" data-slot="1" aria-label="slot-1"></button>
+        <button class="slot-btn" data-slot="2" aria-label="slot-2"></button>
+        <button class="slot-btn" data-slot="3" aria-label="slot-3"></button>
+        <button class="slot-btn" data-slot="4" aria-label="slot-4"></button>
+        <button class="slot-btn" data-slot="5" aria-label="slot-5"></button>
+        <button class="slot-btn" data-slot="6" aria-label="slot-6"></button>
+        <button class="slot-btn" data-slot="7" aria-label="slot-7"></button>
+        <button class="slot-btn" data-slot="8" aria-label="slot-8"></button>
+        <button class="slot-btn" data-slot="9" aria-label="slot-9"></button>
       </div>
     </div>
     <script src="./ソース/やんさん農業/tile.js"></script>

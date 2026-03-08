@@ -702,6 +702,12 @@ import {
       roomId: "",
       toast: "",
       toastUntil: 0,
+      scrollY: 0,
+      maxScrollY: 0,
+      dragActive: false,
+      dragMoved: false,
+      dragStartY: 0,
+      dragLastY: 0,
     },
   };
 
@@ -4267,25 +4273,31 @@ import {
     state.syncUi.cardRects = [];
     const cols = canvas.clientWidth < 720 ? 2 : (canvas.clientWidth < 1080 ? 3 : 4);
     const rows = Math.ceil(CHARACTER_DEFS.length / cols);
-    const gap = canvas.clientWidth < 720 ? 8 : 12;
+    const gap = canvas.clientWidth < 720 ? 6 : 10;
     const startY = 166;
     const footerPad = 56;
     const availableW = Math.max(240, canvas.clientWidth - 24);
-    const availableH = Math.max(260, canvas.clientHeight - startY - footerPad);
-    const cardW = Math.max(92, Math.floor((availableW - (cols - 1) * gap) / cols));
-    const cardH = Math.max(118, Math.floor((availableH - (rows - 1) * gap) / rows));
+    const availableH = Math.max(220, canvas.clientHeight - startY - footerPad);
+    const cardW = Math.max(86, Math.floor((availableW - (cols - 1) * gap) / cols));
+    const cardH = Math.max(104, Math.floor(Math.min(168, (availableH - (Math.min(rows, 2) - 1) * gap) / Math.min(rows, 2))));
     const totalW = cols * cardW + (cols - 1) * gap;
     const startX = Math.floor((canvas.clientWidth - totalW) * 0.5);
     const cardScale = Math.max(0.56, Math.min(1, Math.min(cardW / 180, cardH / 220)));
+    const contentH = rows * cardH + (rows - 1) * gap;
+    state.syncUi.maxScrollY = Math.max(0, contentH - availableH);
+    state.syncUi.scrollY = clamp(state.syncUi.scrollY, 0, state.syncUi.maxScrollY);
+    const viewTop = startY;
+    const viewBottom = startY + availableH;
 
     for (let i = 0; i < CHARACTER_DEFS.length; i += 1) {
       const c = CHARACTER_DEFS[i];
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = startX + col * (cardW + gap);
-      const y = startY + row * (cardH + gap);
+      const y = startY + row * (cardH + gap) - state.syncUi.scrollY;
       const rect = { x, y, w: cardW, h: cardH, id: c.id };
       state.syncUi.cardRects.push(rect);
+      if (y + cardH < viewTop || y > viewBottom) continue;
       const blocked = isCharacterLockedByOther(c.id);
       const panel = loadImage(UI_IMAGES.player_select);
 
@@ -4328,6 +4340,19 @@ import {
       ctx.fillStyle = blocked ? "#ffd9d9" : "#102015";
       ctx.font = `bold ${Math.max(13, Math.floor(22 * cardScale))}px sans-serif`;
       ctx.fillText("PLAY", x + cardW * 0.5, playY + 2);
+    }
+
+    if (state.syncUi.maxScrollY > 0) {
+      const trackH = Math.max(30, availableH - 16);
+      const trackY = viewTop + 8;
+      const thumbH = Math.max(24, Math.floor(trackH * (availableH / contentH)));
+      const t = state.syncUi.scrollY / state.syncUi.maxScrollY;
+      const thumbY = trackY + Math.floor((trackH - thumbH) * t);
+      const trackX = canvas.clientWidth - 8;
+      ctx.fillStyle = "rgba(18,24,18,0.48)";
+      ctx.fillRect(trackX, trackY, 4, trackH);
+      ctx.fillStyle = "rgba(232,245,228,0.88)";
+      ctx.fillRect(trackX, thumbY, 4, thumbH);
     }
 
     if (state.syncUi.toast && performance.now() <= state.syncUi.toastUntil) {
@@ -4409,6 +4434,8 @@ import {
     state.inventoryUi.drag.sourceType = "";
     state.inventoryUi.drag.sourceIndex = -1;
     state.inventoryUi.drag.entry = null;
+    state.syncUi.dragActive = false;
+    state.syncUi.dragMoved = false;
     refreshMobileUi();
   }
 
@@ -4695,7 +4722,7 @@ import {
 
   function refreshMobileUi() {
     if (!mobileUi) return;
-    const visible = isTouchDevice && (state.mode === "play" || state.mode === "inventory");
+    const visible = isTouchDevice && state.mode === "play";
     mobileUi.classList.toggle("hidden", !visible);
     mobileUi.setAttribute("aria-hidden", visible ? "false" : "true");
     if (!visible) {
@@ -4890,6 +4917,10 @@ import {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     if (state.mode === "char_select") {
+      state.syncUi.dragActive = true;
+      state.syncUi.dragMoved = false;
+      state.syncUi.dragStartY = y;
+      state.syncUi.dragLastY = y;
       return;
     }
     if (state.mode === "title") {
@@ -4956,11 +4987,19 @@ import {
   });
 
   canvas.addEventListener("pointermove", (event) => {
-    if (state.mode !== "title" && state.mode !== "title_slots" && state.mode !== "pause" && state.mode !== "inventory") return;
+    if (state.mode !== "title" && state.mode !== "title_slots" && state.mode !== "pause" && state.mode !== "inventory" && state.mode !== "char_select") return;
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    if (state.mode === "title") {
+    if (state.mode === "char_select") {
+      if (!state.syncUi.dragActive) return;
+      const dy = y - state.syncUi.dragLastY;
+      state.syncUi.dragLastY = y;
+      if (Math.abs(y - state.syncUi.dragStartY) > 5) state.syncUi.dragMoved = true;
+      if (state.syncUi.maxScrollY > 0 && dy !== 0) {
+        state.syncUi.scrollY = clamp(state.syncUi.scrollY - dy, 0, state.syncUi.maxScrollY);
+      }
+    } else if (state.mode === "title") {
       state.titleUi.hot = getButtonIdAtTitle(x, y);
     } else if (state.mode === "title_slots") {
       state.saveSelectUi.hotStartIndex = getSaveSlotStartIndexAt(x, y);
@@ -4981,6 +5020,10 @@ import {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     if (state.mode === "char_select") {
+      const wasDragging = state.syncUi.dragActive && state.syncUi.dragMoved;
+      state.syncUi.dragActive = false;
+      state.syncUi.dragMoved = false;
+      if (wasDragging) return;
       if (pointInRect(x, y, state.syncUi.copyRect)) {
         copyInviteUrl();
         return;
