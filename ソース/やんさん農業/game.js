@@ -4240,6 +4240,27 @@ import {
     state.playerName = "";
   }
 
+  async function forceClearAllCharacters() {
+    if (!db || !state.syncUi.roomPath) return false;
+    try {
+      await Promise.all([
+        remove(ref(db, `${state.syncUi.roomPath}/players`)),
+        remove(ref(db, `${state.syncUi.roomPath}/locks`)),
+      ]);
+      onlinePlayers.clear();
+      characterLocks.clear();
+      remoteVisualPlayers.clear();
+      releaseCharacter();
+      setMode("char_select");
+      showSyncToast("全キャラを退出させました", 1800);
+      return true;
+    } catch (err) {
+      setSyncError(err);
+      showSyncToast("全退出に失敗しました", 1800);
+      return false;
+    }
+  }
+
   function setupMultiplayerSync() {
     state.syncUi.roomId = deriveRoomId();
     state.syncUi.roomPath = `rooms/${state.syncUi.roomId}`;
@@ -4855,6 +4876,12 @@ import {
   }
 
   window.addEventListener("keydown", (event) => {
+    if (event.key === "F9") {
+      forceClearAllCharacters();
+      event.preventDefault();
+      return;
+    }
+
     if (event.key === "F3") {
       state.debugCollisionView = !state.debugCollisionView;
       event.preventDefault();
