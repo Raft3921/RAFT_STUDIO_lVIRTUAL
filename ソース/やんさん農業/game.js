@@ -8,7 +8,7 @@ import {
   remove,
   runTransaction,
   set,
-  update,
+  update as updateDb,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 (() => {
@@ -4513,7 +4513,7 @@ import {
       const sent = new Map(pendingTilePatches);
       const patch = {};
       for (const [k, v] of sent.entries()) patch[k] = v === null ? null : v;
-      update(worldTilesRef, patch)
+      updateDb(worldTilesRef, patch)
         .then(() => {
           for (const [k, v] of sent.entries()) {
             if (pendingTilePatches.get(k) === v) pendingTilePatches.delete(k);
@@ -5433,17 +5433,8 @@ import {
       group.forEach((key) => loadSprite(key, c.id));
     });
   });
-  Object.values(ITEMS).forEach((item) => {
-    if (!item.overlayFolder) return;
-    Object.values(animation).forEach((group) => {
-      group.forEach((key) => loadImage(`assets/skin/${item.overlayFolder}/${key}.png`));
-    });
-    Object.values(animation).forEach((group) => {
-      group.forEach((key) => {
-        if (key.startsWith("side_")) loadImage(`assets/skin/${item.overlayFolder}/2${key}.png`);
-      });
-    });
-  });
+  // Do not bulk-preload tool overlay sprites:
+  // many projects do not have full frame sets, which causes noisy 404 logs.
 
   setupMobileControls();
   setupMultiplayerSync();
