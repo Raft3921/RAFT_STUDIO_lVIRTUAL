@@ -44,6 +44,7 @@ import {
   const ROOT_ASSET_ROOT = new URL("../../assets/", import.meta.url).toString();
   const SYNC_INTERVAL_MS = 80;
   const LOCK_TIMEOUT_MS = 12_000;
+  const PLAYER_TIMEOUT_MS = 12_000;
 
   const WORLD = {
     width: 2200,
@@ -59,6 +60,13 @@ import {
     minZoom: 0.38,
     maxZoom: 2.2,
   };
+  const CAMERA_ZOOM_STEP = 0.12;
+  if (isTouchDevice) {
+    CAMERA.defaultZoom = 0.95;
+    CAMERA.zoom = 0.95;
+    CAMERA.minZoom = 0.6;
+    CAMERA.maxZoom = 2.0;
+  }
   const PLAYER = {
     spriteInsetPx: 10,
     drawHeight: 92,
@@ -708,6 +716,17 @@ import {
       dragMoved: false,
       dragStartY: 0,
       dragLastY: 0,
+    },
+    touchHud: {
+      upRect: { x: 0, y: 0, w: 0, h: 0 },
+      downRect: { x: 0, y: 0, w: 0, h: 0 },
+      leftRect: { x: 0, y: 0, w: 0, h: 0 },
+      rightRect: { x: 0, y: 0, w: 0, h: 0 },
+      useRect: { x: 0, y: 0, w: 0, h: 0 },
+      inventoryRect: { x: 0, y: 0, w: 0, h: 0 },
+      zoomInRect: { x: 0, y: 0, w: 0, h: 0 },
+      zoomOutRect: { x: 0, y: 0, w: 0, h: 0 },
+      active: "",
     },
   };
 
@@ -2486,33 +2505,16 @@ import {
   }
 
   function updateAdaptiveFarmZoom(dt) {
-    const tileX = Math.floor(state.player.x / WORLD.tileSize);
-    const tileY = Math.floor(state.player.y / WORLD.tileSize);
-    const onDirt = isSoilTile(tileX, tileY);
-
-    state.farmView.scanCooldown -= dt;
-    const movedTile = tileX !== state.farmView.lastTileX || tileY !== state.farmView.lastTileY;
-
-    if (!onDirt) {
-      state.farmView.targetZoom = CAMERA.defaultZoom;
-      state.farmView.lastTileX = tileX;
-      state.farmView.lastTileY = tileY;
-    } else if (state.farmView.scanCooldown <= 0 || movedTile) {
-      const dirtCount = Math.max(1, getConnectedDirtTileCount(tileX, tileY));
-      const farmArea = dirtCount * WORLD.tileSize * WORLD.tileSize;
-      const viewportAreaAtZoom1 = Math.max(1, canvas.clientWidth * canvas.clientHeight);
-      // Make about 1/2 of the whole farmland area visible on screen.
-      const desiredVisibleArea = Math.max(1, farmArea / 2);
-      const desiredZoom = Math.sqrt(viewportAreaAtZoom1 / desiredVisibleArea);
-      state.farmView.targetZoom = clamp(desiredZoom, CAMERA.minZoom, CAMERA.maxZoom);
-      state.farmView.scanCooldown = 0.25;
-      state.farmView.lastTileX = tileX;
-      state.farmView.lastTileY = tileY;
-    }
-
+    state.farmView.targetZoom = clamp(state.farmView.targetZoom, CAMERA.minZoom, CAMERA.maxZoom);
     const follow = 1 - Math.exp(-dt * 6.0);
     CAMERA.zoom += (state.farmView.targetZoom - CAMERA.zoom) * follow;
     CAMERA.zoom = clamp(CAMERA.zoom, CAMERA.minZoom, CAMERA.maxZoom);
+  }
+
+  function adjustManualZoom(delta) {
+    const next = clamp(state.farmView.targetZoom + delta, CAMERA.minZoom, CAMERA.maxZoom);
+    state.farmView.targetZoom = next;
+    CAMERA.defaultZoom = next;
   }
 
   function getForwardTargetTiles() {
@@ -3434,7 +3436,7 @@ import {
     const totalH = slotCount * slotH + (slotCount - 1) * gap;
     const totalW = slotCount * slotW + (slotCount - 1) * gap;
     const startX = compact ? Math.max(8, Math.floor((canvas.clientWidth - totalW) * 0.5)) : (canvas.clientWidth - slotW - 16);
-    const startY = compact ? Math.max(8, canvas.clientHeight - slotH - 10) : Math.max(14, Math.floor((canvas.clientHeight - totalH) * 0.5));
+    const startY = compact ? Math.max(8, canvas.clientHeight - slotH - 76) : Math.max(14, Math.floor((canvas.clientHeight - totalH) * 0.5));
 
     for (let i = 0; i < slotCount; i += 1) {
       const x = compact ? startX + i * (slotW + gap) : startX;
@@ -3475,6 +3477,45 @@ import {
         }
       }
     }
+  }
+
+  function drawTouchHud() {
+    if (!isTouchDevice || state.mode !== "play") return;
+    const uiScale = Math.max(1, Math.min(2, Math.floor(Math.min(canvas.clientWidth / 480, canvas.clientHeight / 300))));
+    const s = 46 * uiScale;
+    const pad = 10;
+    const baseY = canvas.clientHeight - s * 3 - 96;
+    const leftX = pad;
+    state.touchHud.upRect = { x: leftX + s, y: baseY, w: s, h: s };
+    state.touchHud.leftRect = { x: leftX, y: baseY + s, w: s, h: s };
+    state.touchHud.rightRect = { x: leftX + s * 2, y: baseY + s, w: s, h: s };
+    state.touchHud.downRect = { x: leftX + s, y: baseY + s * 2, w: s, h: s };
+    const rightX = canvas.clientWidth - s * 2 - pad;
+    state.touchHud.zoomInRect = { x: rightX, y: baseY - s * 1.25, w: s * 2, h: s };
+    state.touchHud.zoomOutRect = { x: rightX, y: baseY - s * 0.15, w: s * 2, h: s };
+    state.touchHud.useRect = { x: rightX, y: baseY + s, w: s * 2, h: s };
+    state.touchHud.inventoryRect = { x: rightX, y: baseY + s * 2, w: s * 2, h: s };
+
+    drawTabButton(state.touchHud.upRect, "↑", state.touchHud.active === "up", uiScale);
+    drawTabButton(state.touchHud.leftRect, "←", state.touchHud.active === "left", uiScale);
+    drawTabButton(state.touchHud.rightRect, "→", state.touchHud.active === "right", uiScale);
+    drawTabButton(state.touchHud.downRect, "↓", state.touchHud.active === "down", uiScale);
+    drawTabButton(state.touchHud.zoomInRect, "↑ ZOOM", state.touchHud.active === "zoom_in", uiScale);
+    drawTabButton(state.touchHud.zoomOutRect, "↓ ZOOM", state.touchHud.active === "zoom_out", uiScale);
+    drawTabButton(state.touchHud.useRect, "使う", state.touchHud.active === "use", uiScale);
+    drawTabButton(state.touchHud.inventoryRect, "インベントリ", state.touchHud.active === "inventory", uiScale);
+  }
+
+  function getTouchHudHit(x, y) {
+    if (pointInRect(x, y, state.touchHud.upRect)) return "up";
+    if (pointInRect(x, y, state.touchHud.leftRect)) return "left";
+    if (pointInRect(x, y, state.touchHud.rightRect)) return "right";
+    if (pointInRect(x, y, state.touchHud.downRect)) return "down";
+    if (pointInRect(x, y, state.touchHud.zoomInRect)) return "zoom_in";
+    if (pointInRect(x, y, state.touchHud.zoomOutRect)) return "zoom_out";
+    if (pointInRect(x, y, state.touchHud.useRect)) return "use";
+    if (pointInRect(x, y, state.touchHud.inventoryRect)) return "inventory";
+    return "";
   }
 
   function drawUseEffects() {
@@ -4157,11 +4198,14 @@ import {
 
     stopPlayersSync = onValue(playersRef, (snapshot) => {
       onlinePlayers.clear();
+      const now = Date.now();
       if (!snapshot.exists()) return;
       snapshot.forEach((c) => {
         if (!c.key || c.key === clientId) return;
         const v = c.val();
         if (!v || typeof v !== "object") return;
+        const ts = Number(v.ts) || 0;
+        if (!ts || now - ts > PLAYER_TIMEOUT_MS) return;
         onlinePlayers.set(c.key, v);
       });
       for (const id of remoteVisualPlayers.keys()) {
@@ -4244,7 +4288,7 @@ import {
     ctx.fillStyle = "rgba(0,0,0,0.58)";
     ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
     ctx.fillStyle = "rgba(242,247,239,0.98)";
-    const titleScale = Math.max(0.52, Math.min(1, canvas.clientWidth / 1200));
+    const titleScale = Math.max(0.4, Math.min(1, canvas.clientWidth / 1200));
     ctx.font = `bold ${Math.floor(64 * titleScale)}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
@@ -4271,21 +4315,21 @@ import {
     ctx.fillText("COPY URL", canvas.clientWidth * 0.5, 132);
 
     state.syncUi.cardRects = [];
-    const cols = canvas.clientWidth < 720 ? 2 : (canvas.clientWidth < 1080 ? 3 : 4);
+    const cols = 4;
     const rows = Math.ceil(CHARACTER_DEFS.length / cols);
-    const gap = canvas.clientWidth < 720 ? 6 : 10;
-    const startY = 166;
-    const footerPad = 56;
-    const availableW = Math.max(240, canvas.clientWidth - 24);
-    const availableH = Math.max(220, canvas.clientHeight - startY - footerPad);
-    const cardW = Math.max(86, Math.floor((availableW - (cols - 1) * gap) / cols));
-    const cardH = Math.max(104, Math.floor(Math.min(168, (availableH - (Math.min(rows, 2) - 1) * gap) / Math.min(rows, 2))));
+    const gap = Math.max(4, Math.floor(canvas.clientWidth * 0.008));
+    const startY = 148;
+    const footerPad = 48;
+    const availableW = Math.max(240, canvas.clientWidth - 16);
+    const availableH = Math.max(160, canvas.clientHeight - startY - footerPad);
+    const cardW = Math.max(64, Math.floor((availableW - (cols - 1) * gap) / cols));
+    const cardH = Math.max(74, Math.floor((availableH - (rows - 1) * gap) / rows));
     const totalW = cols * cardW + (cols - 1) * gap;
     const startX = Math.floor((canvas.clientWidth - totalW) * 0.5);
     const cardScale = Math.max(0.56, Math.min(1, Math.min(cardW / 180, cardH / 220)));
     const contentH = rows * cardH + (rows - 1) * gap;
-    state.syncUi.maxScrollY = Math.max(0, contentH - availableH);
-    state.syncUi.scrollY = clamp(state.syncUi.scrollY, 0, state.syncUi.maxScrollY);
+    state.syncUi.maxScrollY = 0;
+    state.syncUi.scrollY = 0;
     const viewTop = startY;
     const viewBottom = startY + availableH;
 
@@ -4294,7 +4338,7 @@ import {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = startX + col * (cardW + gap);
-      const y = startY + row * (cardH + gap) - state.syncUi.scrollY;
+      const y = startY + row * (cardH + gap);
       const rect = { x, y, w: cardW, h: cardH, id: c.id };
       state.syncUi.cardRects.push(rect);
       if (y + cardH < viewTop || y > viewBottom) continue;
@@ -4312,47 +4356,38 @@ import {
 
       const key = animation.frontIdle[Math.floor((state.time * 3) % animation.frontIdle.length)];
       const img = loadSprite(key, c.id);
-      const size = Math.floor(Math.min(cardW, cardH) * 0.43);
+      const size = Math.floor(Math.min(cardW, cardH) * 0.42);
       if (img.complete && img.naturalWidth > 0) {
-        ctx.drawImage(img, x + (cardW - size) * 0.5, y + 14, size, size);
+        ctx.drawImage(img, x + (cardW - size) * 0.5, y + 10, size, size);
       }
 
       ctx.fillStyle = blocked ? "#e24a4a" : "#26b85c";
-      ctx.fillRect(x + 16, y + Math.floor(cardH * 0.56), 10, 10);
+      ctx.fillRect(x + 8, y + Math.floor(cardH * 0.56), Math.max(6, Math.floor(cardW * 0.05)), Math.max(6, Math.floor(cardW * 0.05)));
       ctx.fillStyle = "#1f2a21";
-      ctx.font = `bold ${Math.max(14, Math.floor(30 * cardScale))}px sans-serif`;
+      ctx.font = `bold ${Math.max(9, Math.floor(30 * cardScale))}px sans-serif`;
       ctx.fillText(c.name, x + cardW * 0.5, y + Math.floor(cardH * 0.52));
 
-      const playY = y + cardH - 36;
+      const playY = y + cardH - Math.max(20, Math.floor(cardH * 0.22));
       const playBtn = loadImage(UI_IMAGES.kyara_select);
       if (playBtn.complete && playBtn.naturalWidth > 0) {
-        ctx.drawImage(playBtn, x + 12, playY, cardW - 24, 24);
+        const btnPad = Math.max(4, Math.floor(cardW * 0.06));
+        const btnH = Math.max(14, Math.floor(cardH * 0.16));
+        ctx.drawImage(playBtn, x + btnPad, playY, cardW - btnPad * 2, btnH);
         if (blocked) {
           ctx.fillStyle = "rgba(46,10,10,0.45)";
-          ctx.fillRect(x + 12, playY, cardW - 24, 24);
+          ctx.fillRect(x + btnPad, playY, cardW - btnPad * 2, btnH);
         }
       } else {
         ctx.fillStyle = blocked ? "rgba(60,20,20,0.8)" : "rgba(245,247,241,0.95)";
-        ctx.fillRect(x + 12, playY, cardW - 24, 24);
+        const btnPad = Math.max(4, Math.floor(cardW * 0.06));
+        const btnH = Math.max(14, Math.floor(cardH * 0.16));
+        ctx.fillRect(x + btnPad, playY, cardW - btnPad * 2, btnH);
         ctx.strokeStyle = blocked ? "rgba(255,120,120,0.45)" : "rgba(52,71,57,0.35)";
-        ctx.strokeRect(x + 12, playY, cardW - 24, 24);
+        ctx.strokeRect(x + btnPad, playY, cardW - btnPad * 2, btnH);
       }
       ctx.fillStyle = blocked ? "#ffd9d9" : "#102015";
-      ctx.font = `bold ${Math.max(13, Math.floor(22 * cardScale))}px sans-serif`;
+      ctx.font = `bold ${Math.max(8, Math.floor(22 * cardScale))}px sans-serif`;
       ctx.fillText("PLAY", x + cardW * 0.5, playY + 2);
-    }
-
-    if (state.syncUi.maxScrollY > 0) {
-      const trackH = Math.max(30, availableH - 16);
-      const trackY = viewTop + 8;
-      const thumbH = Math.max(24, Math.floor(trackH * (availableH / contentH)));
-      const t = state.syncUi.scrollY / state.syncUi.maxScrollY;
-      const thumbY = trackY + Math.floor((trackH - thumbH) * t);
-      const trackX = canvas.clientWidth - 8;
-      ctx.fillStyle = "rgba(18,24,18,0.48)";
-      ctx.fillRect(trackX, trackY, 4, trackH);
-      ctx.fillStyle = "rgba(232,245,228,0.88)";
-      ctx.fillRect(trackX, thumbY, 4, thumbH);
     }
 
     if (state.syncUi.toast && performance.now() <= state.syncUi.toastUntil) {
@@ -4436,6 +4471,7 @@ import {
     state.inventoryUi.drag.entry = null;
     state.syncUi.dragActive = false;
     state.syncUi.dragMoved = false;
+    state.touchHud.active = "";
     refreshMobileUi();
   }
 
@@ -4594,6 +4630,7 @@ import {
       drawInventoryUI();
     } else {
       drawInventoryUI();
+      drawTouchHud();
     }
     if (state.mode === "title") {
       drawTitleScreen();
@@ -4607,6 +4644,9 @@ import {
 
   function runStep(dt) {
     const clamped = Math.min(0.05, dt);
+    if (isTouchDevice && state.mode === "play") {
+      requestGameplayFullscreen();
+    }
     if (state.mode === "play") {
       update(clamped);
     } else {
@@ -4721,20 +4761,16 @@ import {
   }
 
   function refreshMobileUi() {
-    if (!mobileUi) return;
-    const visible = isTouchDevice && state.mode === "play";
-    mobileUi.classList.toggle("hidden", !visible);
-    mobileUi.setAttribute("aria-hidden", visible ? "false" : "true");
-    if (!visible) {
+    if (mobileUi) {
+      mobileUi.classList.add("hidden");
+      mobileUi.setAttribute("aria-hidden", "true");
+    }
+    if (state.mode !== "play") {
       mobileInput.up = false;
       mobileInput.down = false;
       mobileInput.left = false;
       mobileInput.right = false;
       mobileInput.actionHeld = false;
-    }
-    for (const btn of mobileSlotButtons) {
-      const idx = (Number(btn.dataset.slot) || 1) - 1;
-      btn.classList.toggle("active", idx === state.inventory.selectedSlot);
     }
   }
 
@@ -4759,44 +4795,6 @@ import {
   }
 
   function setupMobileControls() {
-    if (!mobileUi) return;
-    mobileUi.addEventListener("contextmenu", (event) => event.preventDefault());
-    const moveMap = {
-      up: "up",
-      down: "down",
-      left: "left",
-      right: "right",
-    };
-    for (const btn of mobileMoveButtons) {
-      const dir = moveMap[String(btn.dataset.move || "")];
-      if (!dir) continue;
-      bindMobileHold(btn, () => { mobileInput[dir] = true; }, () => { mobileInput[dir] = false; });
-    }
-    bindMobileHold(
-      mobileActionBtn,
-      () => {
-        mobileInput.actionHeld = true;
-        mobileInput.nextActionAt = 0;
-        triggerUseAction();
-      },
-      () => { mobileInput.actionHeld = false; },
-    );
-    if (mobileInventoryBtn) {
-      mobileInventoryBtn.addEventListener("click", (event) => {
-        event.preventDefault();
-        if (state.mode === "play") setMode("inventory");
-        else if (state.mode === "inventory") setMode("play");
-      }, { passive: false });
-    }
-    for (const btn of mobileSlotButtons) {
-      btn.addEventListener("click", (event) => {
-        event.preventDefault();
-        const slot = Number(btn.dataset.slot);
-        if (!Number.isInteger(slot) || slot < 1 || slot > 9) return;
-        state.inventory.selectedSlot = slot - 1;
-        refreshMobileUi();
-      }, { passive: false });
-    }
     refreshMobileUi();
   }
 
@@ -4960,6 +4958,27 @@ import {
       return;
     }
     if (state.mode === "play" && event.button === 0) {
+      const hudHit = getTouchHudHit(x, y);
+      if (hudHit) {
+        state.touchHud.active = hudHit;
+        mobileInput.up = hudHit === "up";
+        mobileInput.down = hudHit === "down";
+        mobileInput.left = hudHit === "left";
+        mobileInput.right = hudHit === "right";
+        if (hudHit === "zoom_in") {
+          adjustManualZoom(-CAMERA_ZOOM_STEP);
+        } else if (hudHit === "zoom_out") {
+          adjustManualZoom(CAMERA_ZOOM_STEP);
+        } else if (hudHit === "use") {
+          mobileInput.actionHeld = true;
+          mobileInput.nextActionAt = 0;
+          triggerUseAction();
+        } else if (hudHit === "inventory") {
+          setMode("inventory");
+        }
+        requestGameplayFullscreen();
+        return;
+      }
       const quickIndex = getQuickSlotIndexAt(x, y);
       if (quickIndex >= 0) {
         state.inventory.selectedSlot = quickIndex;
@@ -5037,6 +5056,15 @@ import {
       acquireCharacter(characterId).then((ok) => {
         if (!ok) showSyncToast("参加できませんでした", 1800);
       });
+      return;
+    }
+    if (state.touchHud.active) {
+      state.touchHud.active = "";
+      mobileInput.up = false;
+      mobileInput.down = false;
+      mobileInput.left = false;
+      mobileInput.right = false;
+      mobileInput.actionHeld = false;
       return;
     }
     if (state.mode !== "title" && state.mode !== "title_slots" && state.mode !== "pause" && state.mode !== "inventory") return;
