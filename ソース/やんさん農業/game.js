@@ -735,6 +735,7 @@ import {
       downRect: { x: 0, y: 0, w: 0, h: 0 },
       leftRect: { x: 0, y: 0, w: 0, h: 0 },
       rightRect: { x: 0, y: 0, w: 0, h: 0 },
+      saveRect: { x: 0, y: 0, w: 0, h: 0 },
       useRect: { x: 0, y: 0, w: 0, h: 0 },
       inventoryRect: { x: 0, y: 0, w: 0, h: 0 },
       zoomInRect: { x: 0, y: 0, w: 0, h: 0 },
@@ -3656,6 +3657,7 @@ import {
     state.touchHud.zoomOutRect = { x: rightX, y: baseY - s * 0.15, w: s * 2, h: s };
     state.touchHud.useRect = { x: rightX, y: baseY + s, w: s * 2, h: s };
     state.touchHud.inventoryRect = { x: rightX, y: baseY + s * 2, w: s * 2, h: s };
+    state.touchHud.saveRect = { x: canvas.clientWidth - s * 2 - pad, y: pad + 6, w: s * 2, h: s };
 
     const drawImageButton = (rect, imagePath, active, fallback) => {
       const img = loadImage(imagePath);
@@ -3695,6 +3697,7 @@ import {
     drawImageButton(state.touchHud.zoomOutRect, UI_IMAGES.ui_down, state.touchHud.active === "zoom_out", "-");
     drawActionButton(state.touchHud.useRect, "使う", state.touchHud.active === "use");
     drawActionButton(state.touchHud.inventoryRect, "インベントリ", state.touchHud.active === "inventory");
+    drawActionButton(state.touchHud.saveRect, "保存", state.touchHud.active === "save");
   }
 
   function getTouchHudHit(x, y) {
@@ -3706,7 +3709,15 @@ import {
     if (pointInRect(x, y, state.touchHud.zoomOutRect)) return "zoom_out";
     if (pointInRect(x, y, state.touchHud.useRect)) return "use";
     if (pointInRect(x, y, state.touchHud.inventoryRect)) return "inventory";
+    if (pointInRect(x, y, state.touchHud.saveRect)) return "save";
     return "";
+  }
+
+  function saveWorldNow() {
+    saveCharacterState(true);
+    saveGameToStorage(true);
+    syncLocalPlayer(true);
+    showSyncToast("保存しました", 1400);
   }
 
   function drawUseEffects() {
@@ -5248,6 +5259,8 @@ import {
           triggerUseAction();
         } else if (hudHit === "inventory") {
           setMode("inventory");
+        } else if (hudHit === "save") {
+          saveWorldNow();
         }
         requestGameplayFullscreen();
         return;
