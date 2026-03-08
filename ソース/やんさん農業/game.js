@@ -882,6 +882,22 @@ import {
     return null;
   }
 
+  function buildTerrainFullSnapshot() {
+    if (!(externalTerrainData && externalTerrainWidth > 0 && externalTerrainHeight > 0)) return null;
+    if (externalTerrainLayers) {
+      return {
+        layers: externalTerrainLayers.map((layer, i) => ({
+          index: externalTerrainLayerOrder ? externalTerrainLayerOrder[i] : (i + 1),
+          sparse: cloneSparseObject(layer && layer.sparse),
+        })),
+      };
+    }
+    if (externalTerrainSparse && typeof externalTerrainSparse === "object") {
+      return { sparse: cloneSparseObject(externalTerrainSparse) };
+    }
+    return null;
+  }
+
   function applyTerrainSaveData(terrain) {
     if (!(externalTerrainData && externalTerrainWidth > 0 && externalTerrainHeight > 0)) return;
     if (externalTerrainLayers) {
@@ -1326,6 +1342,7 @@ import {
         characterProgress: {
           collectedTools: [...state.collectedToolKinds],
         },
+        terrainFull: buildTerrainFullSnapshot(),
         inventory: {
           slots: [...state.inventory.slots],
           bag: [...state.inventory.bag],
@@ -1404,7 +1421,11 @@ import {
       }
     }
     state.crops = normalizeCropsMap(objectToMap(root.crops));
-    applyTerrainSaveData(root.terrain);
+    if (root.terrainFull && typeof root.terrainFull === "object") {
+      applyTerrainSaveData(root.terrainFull);
+    } else {
+      applyTerrainSaveData(root.terrain);
+    }
     ensureRequiredToolsAvailable();
     state.useEffects = [];
     state.autosaveElapsed = 0;
