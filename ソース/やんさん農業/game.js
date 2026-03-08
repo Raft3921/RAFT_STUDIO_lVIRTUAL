@@ -321,6 +321,7 @@ import {
   let stopLocksSync = null;
   let stopConnectionSync = null;
   let lastSyncAt = 0;
+  let lastFullscreenRequestAt = 0;
   let isDbConnected = false;
   let syncLastError = "";
   const onlinePlayers = new Map();
@@ -3387,17 +3388,25 @@ import {
     const slotSel = loadImage(UI_IMAGES.slot_on);
     const srcW = (slotBase.complete && slotBase.naturalWidth > 0) ? slotBase.naturalWidth : 16;
     const srcH = (slotBase.complete && slotBase.naturalHeight > 0) ? slotBase.naturalHeight : 16;
-    const slotScale = Math.max(3, Math.round(54 / Math.max(srcW, srcH)));
+    const compact = isTouchDevice || canvas.clientWidth < 980 || canvas.clientHeight < 720;
+    const baseScale = compact ? Math.round(40 / Math.max(srcW, srcH)) : Math.round(54 / Math.max(srcW, srcH));
+    let slotScale = Math.max(2, baseScale);
+    if (compact) {
+      const maxBarW = Math.max(120, canvas.clientWidth - 24);
+      const maxScaleByWidth = Math.floor((maxBarW - (slotCount - 1) * 4) / (slotCount * srcW));
+      slotScale = Math.max(2, Math.min(slotScale, maxScaleByWidth));
+    }
     const slotW = srcW * slotScale;
     const slotH = srcH * slotScale;
-    const gap = Math.max(6, Math.floor(slotScale * 2));
+    const gap = compact ? Math.max(3, Math.floor(slotScale)) : Math.max(6, Math.floor(slotScale * 2));
     const totalH = slotCount * slotH + (slotCount - 1) * gap;
-    const startX = canvas.clientWidth - slotW - 16;
-    const startY = Math.max(14, Math.floor((canvas.clientHeight - totalH) * 0.5));
+    const totalW = slotCount * slotW + (slotCount - 1) * gap;
+    const startX = compact ? Math.max(8, Math.floor((canvas.clientWidth - totalW) * 0.5)) : (canvas.clientWidth - slotW - 16);
+    const startY = compact ? Math.max(8, canvas.clientHeight - slotH - 10) : Math.max(14, Math.floor((canvas.clientHeight - totalH) * 0.5));
 
     for (let i = 0; i < slotCount; i += 1) {
-      const x = startX;
-      const y = startY + i * (slotH + gap);
+      const x = compact ? startX + i * (slotW + gap) : startX;
+      const y = compact ? startY : startY + i * (slotH + gap);
       state.inventoryUi.quickRects[i] = { x, y, w: slotW, h: slotH };
       const selected = i === state.inventory.selectedSlot;
       const entry = state.inventory.slots[i];
@@ -3833,6 +3842,13 @@ import {
     return null;
   }
 
+  function getQuickSlotIndexAt(x, y) {
+    for (let i = 0; i < state.inventoryUi.quickRects.length; i += 1) {
+      if (pointInRect(x, y, state.inventoryUi.quickRects[i])) return i;
+    }
+    return -1;
+  }
+
   function canMergeEntries(a, b) {
     const kindA = getSlotKind(a);
     const kindB = getSlotKind(b);
@@ -4016,6 +4032,10 @@ import {
 
   async function acquireCharacter(characterId) {
     if (!db || !locksRef) return false;
+    if (!isDbConnected) {
+      showSyncToast("ONLINE接続待ちです", 1800);
+      return false;
+    }
     const def = CHARACTER_DEFS.find((c) => c.id === characterId);
     if (!def) return false;
 
@@ -4032,21 +4052,13 @@ import {
         if (!stale && !mine) return;
       }
       return { clientId, ts: now, name: def.name };
-    }, { applyLocally: false }).catch(() => null);
-    if (tx && tx.committed) {
-      localLockRef = nextLockRef;
-      onDisconnect(nextLockRef).remove().catch(() => {});
-    } else {
-      if (isCharacterLockedByOther(characterId)) return false;
-      localLockRef = nextLockRef;
-      const locked = await set(nextLockRef, { clientId, ts: Date.now(), name: def.name }).then(() => true).catch((err) => {
-        localLockRef = null;
-        setSyncError(err);
-        return false;
-      });
-      if (!locked) return false;
-      onDisconnect(nextLockRef).remove().catch(() => {});
-    }
+    }, { applyLocally: false }).catch((err) => {
+      setSyncError(err);
+      return null;
+    });
+    if (!(tx && tx.committed)) return false;
+    localLockRef = nextLockRef;
+    onDisconnect(nextLockRef).remove().catch((err) => setSyncError(err));
 
     state.selectedCharacterId = characterId;
     state.playerName = def.name;
@@ -4580,11 +4592,13 @@ import {
   }
 
   function requestGameplayFullscreen() {
-    if (!isTouchDevice) return;
+    const now = performance.now();
+    if (now - lastFullscreenRequestAt < 750) return;
+    lastFullscreenRequestAt = now;
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
     }
-    if (screen.orientation && typeof screen.orientation.lock === "function") {
+    if (isTouchDevice && screen.orientation && typeof screen.orientation.lock === "function") {
       screen.orientation.lock("landscape").catch(() => {});
     }
   }
@@ -4818,6 +4832,15 @@ import {
       state.inventoryUi.drag.y = y;
       return;
     }
+    if (state.mode === "play" && event.button === 0) {
+      const quickIndex = getQuickSlotIndexAt(x, y);
+      if (quickIndex >= 0) {
+        state.inventory.selectedSlot = quickIndex;
+        refreshMobileUi();
+        requestGameplayFullscreen();
+        return;
+      }
+    }
     const held = getSelectedItemKind();
     if (!held && (event.button === 0 || event.button === 2)) {
       tryHarvestClambonAtForwardTile();
@@ -4828,6 +4851,7 @@ import {
       return;
     }
     if (event.button !== 0) return;
+    requestGameplayFullscreen();
     triggerUseAction();
   });
 
@@ -4918,7 +4942,17 @@ import {
   });
 
   window.addEventListener("resize", resize);
-  document.addEventListener("fullscreenchange", resize);
+  document.addEventListener("fullscreenchange", () => {
+    resize();
+    if (state.mode === "play" && !document.fullscreenElement) {
+      requestGameplayFullscreen();
+    }
+  });
+  document.addEventListener("contextmenu", (event) => event.preventDefault(), { passive: false });
+  document.addEventListener("dragstart", (event) => event.preventDefault(), { passive: false });
+  document.addEventListener("selectstart", (event) => {
+    if (isTouchDevice) event.preventDefault();
+  }, { passive: false });
 
   grassVariants.forEach((path) => loadImage(path));
   loadImage(TILE_IMAGES.clippings);

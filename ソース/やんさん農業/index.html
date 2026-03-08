@@ -11,6 +11,9 @@
         width: 100%; height: 100%; margin: 0; overflow: hidden; background: #1d2e17;
       }
       body { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+      html, body, canvas, button, img {
+        -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none;
+      }
       canvas { width: 100vw; height: 100vh; display: block; cursor: none; touch-action: none; }
       #mobile-ui { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
       #mobile-ui.hidden { display: none; }
@@ -22,7 +25,7 @@
         padding: 0;
       }
       .pad-btn:active { background: rgba(68,98,84,0.78); }
-      .pad-btn img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+      .pad-btn img { width: 100%; height: 100%; display: block; image-rendering: pixelated; pointer-events: none; }
       .pad-up { left: 54px; top: 0; }
       .pad-left { left: 0; top: 54px; }
       .pad-right { right: 0; top: 54px; }
@@ -57,7 +60,7 @@
         <button class="pad-btn pad-down" data-move="down" aria-label="down"><img src="../../assets/ui/down.png" alt="" /></button>
       </div>
       <div class="actions">
-        <button id="mobile-action" class="action-btn">耕す</button>
+        <button id="mobile-action" class="action-btn">使う</button>
         <button id="mobile-inventory" class="action-btn">インベントリ</button>
       </div>
       <div class="quickbar" id="mobile-quickbar">
