@@ -204,6 +204,10 @@ import {
     title: "assets/title.png",
     player_select: "assets/ui/player_select.png",
     kyara_select: "assets/ui/kyara_select.png",
+    ui_up: "assets/ui/up.png",
+    ui_down: "assets/ui/down.png",
+    ui_left: "assets/ui/left.png",
+    ui_right: "assets/ui/right.png",
     panel_tl: "assets/panel_tl.png",
     panel_top: "assets/panel_top.png",
     panel_tr: "assets/panel_tr.png",
@@ -728,6 +732,7 @@ import {
       zoomInRect: { x: 0, y: 0, w: 0, h: 0 },
       zoomOutRect: { x: 0, y: 0, w: 0, h: 0 },
       active: "",
+      pointerId: null,
     },
   };
 
@@ -3549,14 +3554,44 @@ import {
     state.touchHud.useRect = { x: rightX, y: baseY + s, w: s * 2, h: s };
     state.touchHud.inventoryRect = { x: rightX, y: baseY + s * 2, w: s * 2, h: s };
 
-    drawTabButton(state.touchHud.upRect, "↑", state.touchHud.active === "up", uiScale);
-    drawTabButton(state.touchHud.leftRect, "←", state.touchHud.active === "left", uiScale);
-    drawTabButton(state.touchHud.rightRect, "→", state.touchHud.active === "right", uiScale);
-    drawTabButton(state.touchHud.downRect, "↓", state.touchHud.active === "down", uiScale);
-    drawTabButton(state.touchHud.zoomInRect, "↑ ZOOM", state.touchHud.active === "zoom_in", uiScale);
-    drawTabButton(state.touchHud.zoomOutRect, "↓ ZOOM", state.touchHud.active === "zoom_out", uiScale);
-    drawTabButton(state.touchHud.useRect, "使う", state.touchHud.active === "use", uiScale);
-    drawTabButton(state.touchHud.inventoryRect, "インベントリ", state.touchHud.active === "inventory", uiScale);
+    const drawImageButton = (rect, imagePath, active, fallback) => {
+      const img = loadImage(imagePath);
+      if (img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
+        if (active) {
+          ctx.fillStyle = "rgba(255,255,255,0.18)";
+          ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        }
+      } else {
+        drawTabButton(rect, fallback, active, uiScale);
+      }
+    };
+    const drawActionButton = (rect, label, active) => {
+      const btn = loadImage(UI_IMAGES.kyara_select);
+      if (btn.complete && btn.naturalWidth > 0) {
+        ctx.drawImage(btn, rect.x, rect.y, rect.w, rect.h);
+        if (active) {
+          ctx.fillStyle = "rgba(255,255,255,0.18)";
+          ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        }
+        ctx.fillStyle = "#102015";
+        ctx.font = `bold ${Math.max(11, Math.floor(rect.h * 0.42))}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + rect.h * 0.5 + 1);
+      } else {
+        drawTabButton(rect, label, active, uiScale);
+      }
+    };
+
+    drawImageButton(state.touchHud.upRect, UI_IMAGES.ui_up, state.touchHud.active === "up", "↑");
+    drawImageButton(state.touchHud.leftRect, UI_IMAGES.ui_left, state.touchHud.active === "left", "←");
+    drawImageButton(state.touchHud.rightRect, UI_IMAGES.ui_right, state.touchHud.active === "right", "→");
+    drawImageButton(state.touchHud.downRect, UI_IMAGES.ui_down, state.touchHud.active === "down", "↓");
+    drawImageButton(state.touchHud.zoomInRect, UI_IMAGES.ui_up, state.touchHud.active === "zoom_in", "+");
+    drawImageButton(state.touchHud.zoomOutRect, UI_IMAGES.ui_down, state.touchHud.active === "zoom_out", "-");
+    drawActionButton(state.touchHud.useRect, "使う", state.touchHud.active === "use");
+    drawActionButton(state.touchHud.inventoryRect, "インベントリ", state.touchHud.active === "inventory");
   }
 
   function getTouchHudHit(x, y) {
@@ -4547,8 +4582,20 @@ import {
     state.inventoryUi.drag.entry = null;
     state.syncUi.dragActive = false;
     state.syncUi.dragMoved = false;
-    state.touchHud.active = "";
+    clearTouchHudInput();
     refreshMobileUi();
+  }
+
+  function clearTouchHudInput(pointerId = null) {
+    if (pointerId !== null && state.touchHud.pointerId !== pointerId) return false;
+    state.touchHud.active = "";
+    state.touchHud.pointerId = null;
+    mobileInput.up = false;
+    mobileInput.down = false;
+    mobileInput.left = false;
+    mobileInput.right = false;
+    mobileInput.actionHeld = false;
+    return true;
   }
 
   function handleTitleButton(id) {
@@ -4721,9 +4768,6 @@ import {
 
   function runStep(dt) {
     const clamped = Math.min(0.05, dt);
-    if (isTouchDevice && state.mode === "play") {
-      requestGameplayFullscreen();
-    }
     if (state.mode === "play") {
       update(clamped);
     } else {
@@ -4843,11 +4887,7 @@ import {
       mobileUi.setAttribute("aria-hidden", "true");
     }
     if (state.mode !== "play") {
-      mobileInput.up = false;
-      mobileInput.down = false;
-      mobileInput.left = false;
-      mobileInput.right = false;
-      mobileInput.actionHeld = false;
+      clearTouchHudInput();
     }
   }
 
@@ -5043,7 +5083,9 @@ import {
     if (state.mode === "play" && event.button === 0) {
       const hudHit = getTouchHudHit(x, y);
       if (hudHit) {
+        canvas.setPointerCapture?.(event.pointerId);
         state.touchHud.active = hudHit;
+        state.touchHud.pointerId = event.pointerId;
         mobileInput.up = hudHit === "up";
         mobileInput.down = hudHit === "down";
         mobileInput.left = hudHit === "left";
@@ -5142,12 +5184,7 @@ import {
       return;
     }
     if (state.touchHud.active) {
-      state.touchHud.active = "";
-      mobileInput.up = false;
-      mobileInput.down = false;
-      mobileInput.left = false;
-      mobileInput.right = false;
-      mobileInput.actionHeld = false;
+      clearTouchHudInput(event.pointerId);
       return;
     }
     if (state.mode !== "title" && state.mode !== "title_slots" && state.mode !== "pause" && state.mode !== "inventory") return;
@@ -5199,6 +5236,18 @@ import {
   });
 
   window.addEventListener("resize", resize);
+  canvas.addEventListener("pointercancel", (event) => {
+    clearTouchHudInput(event.pointerId);
+  }, { passive: true });
+  canvas.addEventListener("pointerleave", () => {
+    clearTouchHudInput();
+  }, { passive: true });
+  window.addEventListener("blur", () => {
+    clearTouchHudInput();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") clearTouchHudInput();
+  });
   document.addEventListener("fullscreenchange", () => {
     resize();
     if (state.mode === "play" && !document.fullscreenElement) {
