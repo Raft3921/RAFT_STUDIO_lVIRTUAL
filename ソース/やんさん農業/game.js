@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getDatabase,
+  get,
   onDisconnect,
   onValue,
   ref,
@@ -1181,6 +1182,14 @@ import {
     localStorage.setItem(CHARACTER_SAVE_STORAGE_KEY, JSON.stringify(out));
   }
 
+  function getCharacterStateRef(characterId) {
+    if (!db) return null;
+    const id = String(characterId || "").trim();
+    if (!id) return null;
+    // Character progression is global across devices for this site.
+    return ref(db, `characterStates/${id}`);
+  }
+
   function getCropVisualStage(crop, nowMs) {
     if (!crop) return 0;
     const plantedAtMs = Number(crop.plantedAtMs) || nowMs;
@@ -1462,23 +1471,29 @@ import {
   function saveCharacterState(auto = false) {
     const characterId = String(state.selectedCharacterId || "");
     if (!characterId) return false;
+    const entry = {
+      updatedAt: Date.now(),
+      totalPlaySeconds: Math.max(0, Number(state.currentSlotPlaySeconds) || 0),
+      payload: buildSaveData(),
+    };
+    let localOk = true;
     try {
       const collection = readCharacterStateCollection();
-      collection[characterId] = {
-        updatedAt: Date.now(),
-        totalPlaySeconds: Math.max(0, Number(state.currentSlotPlaySeconds) || 0),
-        payload: buildSaveData(),
-      };
+      collection[characterId] = entry;
       writeCharacterStateCollection(collection);
-      if (!auto) console.log("saved character state");
-      return true;
     } catch (err) {
+      localOk = false;
       console.error(err);
-      return false;
     }
+    const cloudRef = getCharacterStateRef(characterId);
+    if (cloudRef) {
+      set(cloudRef, entry).catch((err) => setSyncError(err));
+    }
+    if (!auto) console.log("saved character state");
+    return localOk;
   }
 
-  function loadCharacterState(characterId) {
+  function loadCharacterStateLocal(characterId) {
     const id = String(characterId || "");
     if (!id) return false;
     try {
@@ -1493,6 +1508,32 @@ import {
       console.error(err);
       return false;
     }
+  }
+
+  async function loadCharacterState(characterId) {
+    const id = String(characterId || "");
+    if (!id) return false;
+    const cloudRef = getCharacterStateRef(id);
+    if (cloudRef) {
+      try {
+        const snapshot = await get(cloudRef);
+        const entry = snapshot.exists() ? snapshot.val() : null;
+        if (entry && typeof entry === "object" && entry.payload) {
+          const ok = applySaveData(entry.payload);
+          if (ok) {
+            state.currentSlotPlaySeconds = Math.max(0, Number(entry.totalPlaySeconds) || state.currentSlotPlaySeconds);
+            // Keep a local cache fallback, but source of truth is Firebase.
+            const collection = readCharacterStateCollection();
+            collection[id] = entry;
+            writeCharacterStateCollection(collection);
+            return true;
+          }
+        }
+      } catch (err) {
+        setSyncError(err);
+      }
+    }
+    return loadCharacterStateLocal(id);
   }
 
   function loadGameFromStorage(slotIndex = state.activeSaveSlot) {
@@ -4315,7 +4356,8 @@ import {
 
     state.selectedCharacterId = characterId;
     state.playerName = def.name;
-    loadCharacterState(characterId);
+    const loaded = await loadCharacterState(characterId);
+    if (!loaded) resetGameplayState();
     state.mode = "play";
     requestGameplayFullscreen();
     refreshMobileUi();
