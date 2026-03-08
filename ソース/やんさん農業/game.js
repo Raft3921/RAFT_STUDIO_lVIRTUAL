@@ -194,6 +194,8 @@ import {
   };
   const UI_IMAGES = {
     title: "assets/title.png",
+    player_select: "assets/ui/player_select.png",
+    kyara_select: "assets/ui/kyara_select.png",
     panel_tl: "assets/panel_tl.png",
     panel_top: "assets/panel_top.png",
     panel_tr: "assets/panel_tr.png",
@@ -320,6 +322,7 @@ import {
   let stopConnectionSync = null;
   let lastSyncAt = 0;
   let isDbConnected = false;
+  let syncLastError = "";
   const onlinePlayers = new Map();
   const characterLocks = new Map();
   const mobileInput = {
@@ -454,7 +457,7 @@ import {
       : 1;
     const width = PLAYER.drawHeight * ratio;
     const height = PLAYER.drawHeight;
-    const mirrorX = state.player.facing === "left" && key.startsWith("side_");
+    const mirrorX = state.player.facing === "right" && key.startsWith("side_");
     const probes = [];
     const outerSamples = [];
     for (let my = 0; my < 16; my += 1) {
@@ -1432,7 +1435,7 @@ import {
   function loadImage(path) {
     const raw = String(path || "");
     let resolved = raw;
-    if (raw.startsWith("assets/player/")) {
+    if (raw.startsWith("assets/player/") || raw.startsWith("assets/ui/")) {
       resolved = `${ROOT_ASSET_ROOT}${raw.slice("assets/".length)}`;
     } else if (raw.startsWith("assets/")) {
       resolved = `${FARM_ASSET_ROOT}${raw.slice("assets/".length)}`;
@@ -2521,7 +2524,7 @@ import {
 
   function getPlayerSprite() {
     const key = getCurrentPlayerSpriteKey();
-    return { key, image: loadSprite(key), flip: state.player.facing === "left" };
+    return { key, image: loadSprite(key), flip: state.player.facing === "right" };
   }
 
   function drawGrassTiles() {
@@ -3135,7 +3138,7 @@ import {
     if (held && ITEMS[held] && ITEMS[held].overlayFolder) {
       const folder = ITEMS[held].overlayFolder;
       let overlayPath = `assets/skin/${folder}/${key}.png`;
-      if (key.startsWith("side_") && state.player.facing === "left") {
+      if (key.startsWith("side_") && state.player.facing === "right") {
         overlayPath = `assets/skin/${folder}/2${key}.png`;
       }
       const overlay = loadImage(overlayPath);
@@ -3179,7 +3182,7 @@ import {
       const shadowRx = PLAYER.hitRadiusWorld * 1.05 * CAMERA.zoom;
       const shadowRy = PLAYER.hitRadiusWorld * 0.4 * CAMERA.zoom;
       const drawFullSprite = !isSide || pass === "all";
-      const flip = facing === "left";
+      const flip = facing === "right";
 
       if (pass !== "front") {
         ctx.fillStyle = "rgba(0,0,0,0.2)";
@@ -3268,7 +3271,7 @@ import {
     const playerTop = canvas.clientHeight * 0.5 - playerH * 0.9;
     const stepX = playerW / 16;
     const stepY = playerH / 16;
-    const mirrorX = state.player.facing === "left" && playerKey.startsWith("side_");
+    const mirrorX = state.player.facing === "right" && playerKey.startsWith("side_");
     ctx.fillStyle = "rgba(80, 220, 255, 0.34)";
     for (let my = 0; my < 16; my += 1) {
       const row = playerMask[my] || 0;
@@ -3962,6 +3965,12 @@ import {
     state.syncUi.toastUntil = performance.now() + ms;
   }
 
+  function setSyncError(err) {
+    const raw = typeof err === "string" ? err : String(err?.message || err || "");
+    syncLastError = raw || "sync error";
+    console.error("sync", err);
+  }
+
   async function copyInviteUrl() {
     const url = new URL(window.location.href);
     url.hash = state.syncUi.roomId;
@@ -4030,9 +4039,12 @@ import {
     } else {
       if (isCharacterLockedByOther(characterId)) return false;
       localLockRef = nextLockRef;
-      set(nextLockRef, { clientId, ts: Date.now(), name: def.name }).catch(() => {
+      const locked = await set(nextLockRef, { clientId, ts: Date.now(), name: def.name }).then(() => true).catch((err) => {
         localLockRef = null;
+        setSyncError(err);
+        return false;
       });
+      if (!locked) return false;
       onDisconnect(nextLockRef).remove().catch(() => {});
     }
 
@@ -4076,7 +4088,7 @@ import {
         if (!v || typeof v !== "object") return;
         onlinePlayers.set(c.key, v);
       });
-    });
+    }, (err) => setSyncError(err));
     stopLocksSync = onValue(locksRef, (snapshot) => {
       refreshLocks(snapshot);
       if (state.selectedCharacterId && isCharacterLockedByOther(state.selectedCharacterId)) {
@@ -4085,11 +4097,12 @@ import {
         refreshMobileUi();
         showSyncToast("キャラが使用中になりました", 2000);
       }
-    });
+    }, (err) => setSyncError(err));
     stopConnectionSync = onValue(connectedRef, (snapshot) => {
       isDbConnected = snapshot.val() === true;
-    });
-    onDisconnect(localPlayerRef).remove().catch(() => {});
+      if (isDbConnected) syncLastError = "";
+    }, (err) => setSyncError(err));
+    onDisconnect(localPlayerRef).remove().catch((err) => setSyncError(err));
     window.addEventListener("beforeunload", () => {
       releaseCharacter();
       stopPlayersSync?.();
@@ -4116,13 +4129,13 @@ import {
       characterId: state.selectedCharacterId,
       name: state.playerName || state.selectedCharacterId.toUpperCase(),
       ts: now,
-    }).catch(() => {});
+    }).catch((err) => setSyncError(err));
     if (localLockRef) {
       set(localLockRef, {
         clientId,
         ts: now,
         name: state.playerName || state.selectedCharacterId.toUpperCase(),
-      }).catch(() => {});
+      }).catch((err) => setSyncError(err));
     }
   }
 
@@ -4137,8 +4150,13 @@ import {
     ctx.font = "bold 20px sans-serif";
     ctx.fillText(`ROOM ID: ${state.syncUi.roomId}`, canvas.clientWidth * 0.5, 90);
     ctx.font = "bold 14px sans-serif";
-    ctx.fillStyle = isDbConnected ? "rgba(126,240,165,0.95)" : "rgba(255,210,145,0.95)";
-    ctx.fillText(`SYNC: ${isDbConnected ? "ONLINE" : "CONNECTING"} / PEERS: ${onlinePlayers.size}`, canvas.clientWidth * 0.5, 114);
+    ctx.fillStyle = syncLastError
+      ? "rgba(255,120,120,0.96)"
+      : (isDbConnected ? "rgba(126,240,165,0.95)" : "rgba(255,210,145,0.95)");
+    const syncLabel = syncLastError
+      ? `SYNC ERROR / PEERS: ${onlinePlayers.size}`
+      : `SYNC: ${isDbConnected ? "ONLINE" : "CONNECTING"} / PEERS: ${onlinePlayers.size}`;
+    ctx.fillText(syncLabel, canvas.clientWidth * 0.5, 114);
 
     const btnW = 150;
     const btnH = 28;
@@ -4168,11 +4186,16 @@ import {
       const rect = { x, y, w: cardW, h: cardH, id: c.id };
       state.syncUi.cardRects.push(rect);
       const blocked = isCharacterLockedByOther(c.id);
+      const panel = loadImage(UI_IMAGES.player_select);
 
-      ctx.fillStyle = blocked ? "rgba(96,32,32,0.82)" : "rgba(245,247,241,0.96)";
-      ctx.fillRect(x, y, cardW, cardH);
-      ctx.strokeStyle = blocked ? "rgba(255,120,120,0.55)" : "rgba(33,56,39,0.35)";
-      ctx.strokeRect(x, y, cardW, cardH);
+      if (panel.complete && panel.naturalWidth > 0) {
+        ctx.drawImage(panel, x, y, cardW, cardH);
+      } else {
+        ctx.fillStyle = blocked ? "rgba(96,32,32,0.82)" : "rgba(245,247,241,0.96)";
+        ctx.fillRect(x, y, cardW, cardH);
+        ctx.strokeStyle = blocked ? "rgba(255,120,120,0.55)" : "rgba(33,56,39,0.35)";
+        ctx.strokeRect(x, y, cardW, cardH);
+      }
 
       const key = animation.frontIdle[Math.floor((state.time * 3) % animation.frontIdle.length)];
       const img = loadSprite(key, c.id);
@@ -4181,17 +4204,26 @@ import {
         ctx.drawImage(img, x + (cardW - size) * 0.5, y + 14, size, size);
       }
 
-      ctx.fillStyle = blocked ? "#ffdddd" : "#1f2a21";
+      ctx.fillStyle = blocked ? "#e24a4a" : "#26b85c";
       ctx.fillRect(x + 16, y + Math.floor(cardH * 0.56), 10, 10);
-      ctx.fillStyle = blocked ? "#ffdddd" : "#1f2a21";
+      ctx.fillStyle = "#1f2a21";
       ctx.font = "bold 30px sans-serif";
       ctx.fillText(c.name, x + cardW * 0.5, y + Math.floor(cardH * 0.52));
 
       const playY = y + cardH - 36;
-      ctx.fillStyle = blocked ? "rgba(60,20,20,0.8)" : "rgba(245,247,241,0.95)";
-      ctx.fillRect(x + 12, playY, cardW - 24, 24);
-      ctx.strokeStyle = blocked ? "rgba(255,120,120,0.45)" : "rgba(52,71,57,0.35)";
-      ctx.strokeRect(x + 12, playY, cardW - 24, 24);
+      const playBtn = loadImage(UI_IMAGES.kyara_select);
+      if (playBtn.complete && playBtn.naturalWidth > 0) {
+        ctx.drawImage(playBtn, x + 12, playY, cardW - 24, 24);
+        if (blocked) {
+          ctx.fillStyle = "rgba(46,10,10,0.45)";
+          ctx.fillRect(x + 12, playY, cardW - 24, 24);
+        }
+      } else {
+        ctx.fillStyle = blocked ? "rgba(60,20,20,0.8)" : "rgba(245,247,241,0.95)";
+        ctx.fillRect(x + 12, playY, cardW - 24, 24);
+        ctx.strokeStyle = blocked ? "rgba(255,120,120,0.45)" : "rgba(52,71,57,0.35)";
+        ctx.strokeRect(x + 12, playY, cardW - 24, 24);
+      }
       ctx.fillStyle = blocked ? "#ffd9d9" : "#102015";
       ctx.font = "bold 22px sans-serif";
       ctx.fillText("PLAY", x + cardW * 0.5, playY + 2);

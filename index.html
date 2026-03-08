@@ -19,8 +19,10 @@
         position: absolute; width: 52px; height: 52px; border: 2px solid rgba(245,248,255,0.55);
         background: rgba(28,42,36,0.62); color: #f5f7fb; border-radius: 10px; font-weight: 700; font-size: 18px;
         backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); touch-action: none;
+        padding: 0;
       }
       .pad-btn:active { background: rgba(68,98,84,0.78); }
+      .pad-btn img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
       .pad-up { left: 54px; top: 0; }
       .pad-left { left: 0; top: 54px; }
       .pad-right { right: 0; top: 54px; }
@@ -49,10 +51,10 @@
     <canvas id="game"></canvas>
     <div id="mobile-ui" class="hidden" aria-hidden="true">
       <div class="dpad">
-        <button class="pad-btn pad-up" data-move="up">▲</button>
-        <button class="pad-btn pad-left" data-move="left">◀</button>
-        <button class="pad-btn pad-right" data-move="right">▶</button>
-        <button class="pad-btn pad-down" data-move="down">▼</button>
+        <button class="pad-btn pad-up" data-move="up" aria-label="up"><img src="./assets/ui/up.png" alt="" /></button>
+        <button class="pad-btn pad-left" data-move="left" aria-label="left"><img src="./assets/ui/left.png" alt="" /></button>
+        <button class="pad-btn pad-right" data-move="right" aria-label="right"><img src="./assets/ui/right.png" alt="" /></button>
+        <button class="pad-btn pad-down" data-move="down" aria-label="down"><img src="./assets/ui/down.png" alt="" /></button>
       </div>
       <div class="actions">
         <button id="mobile-action" class="action-btn">耕す</button>
