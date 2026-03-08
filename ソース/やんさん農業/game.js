@@ -34,6 +34,12 @@ import {
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
+  const mobileUi = document.getElementById("mobile-ui");
+  const mobileActionBtn = document.getElementById("mobile-action");
+  const mobileInventoryBtn = document.getElementById("mobile-inventory");
+  const mobileMoveButtons = Array.from(document.querySelectorAll("[data-move]"));
+  const mobileSlotButtons = Array.from(document.querySelectorAll("[data-slot]"));
+  const isTouchDevice = window.matchMedia("(pointer: coarse)").matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   const FARM_ASSET_ROOT = new URL("./assets/", import.meta.url).toString();
   const ROOT_ASSET_ROOT = new URL("../../assets/", import.meta.url).toString();
   const SYNC_INTERVAL_MS = 100;
@@ -316,6 +322,14 @@ import {
   let isDbConnected = false;
   const onlinePlayers = new Map();
   const characterLocks = new Map();
+  const mobileInput = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+    actionHeld: false,
+    nextActionAt: 0,
+  };
 
   const animation = {
     sideIdle: ["side_idle1", "side_idle2"],
@@ -1619,10 +1633,10 @@ import {
 
     let inputX = 0;
     let inputY = 0;
-    if (keys.has("ArrowLeft")) inputX -= 1;
-    if (keys.has("ArrowRight")) inputX += 1;
-    if (keys.has("ArrowUp")) inputY -= 1;
-    if (keys.has("ArrowDown")) inputY += 1;
+    if (keys.has("ArrowLeft") || mobileInput.left) inputX -= 1;
+    if (keys.has("ArrowRight") || mobileInput.right) inputX += 1;
+    if (keys.has("ArrowUp") || mobileInput.up) inputY -= 1;
+    if (keys.has("ArrowDown") || mobileInput.down) inputY += 1;
 
     state.player.vx += inputX * accel * dt;
     state.player.vy += inputY * accel * dt;
@@ -4025,6 +4039,8 @@ import {
     state.selectedCharacterId = characterId;
     state.playerName = def.name;
     state.mode = "play";
+    requestGameplayFullscreen();
+    refreshMobileUi();
     syncLocalPlayer(true);
     return true;
   }
@@ -4066,6 +4082,7 @@ import {
       if (state.selectedCharacterId && isCharacterLockedByOther(state.selectedCharacterId)) {
         releaseCharacter();
         state.mode = "char_select";
+        refreshMobileUi();
         showSyncToast("キャラが使用中になりました", 2000);
       }
     });
@@ -4258,6 +4275,7 @@ import {
     state.inventoryUi.drag.sourceType = "";
     state.inventoryUi.drag.sourceIndex = -1;
     state.inventoryUi.drag.entry = null;
+    refreshMobileUi();
   }
 
   function handleTitleButton(id) {
@@ -4357,6 +4375,13 @@ import {
     updateClippingsRegrowth(dt);
     updateUseEffects(dt);
     updateCamera(dt);
+    if (state.mode === "play" && mobileInput.actionHeld) {
+      const now = performance.now();
+      if (now >= mobileInput.nextActionAt) {
+        triggerUseAction();
+        mobileInput.nextActionAt = now + 190;
+      }
+    }
     syncLocalPlayer(false);
     state.autosaveElapsed += dt;
     if (state.autosaveElapsed >= AUTOSAVE_INTERVAL) {
@@ -4374,6 +4399,7 @@ import {
       drawUpperTileLayers(false);
       drawRemotePlayers("all");
       drawCharacterSelectScreen();
+      refreshMobileUi();
       return;
     }
 
@@ -4416,6 +4442,7 @@ import {
     } else if (state.mode === "pause") {
       drawPauseScreen();
     }
+    refreshMobileUi();
   }
 
   function runStep(dt) {
@@ -4518,6 +4545,96 @@ import {
     } else {
       document.exitFullscreen().catch(() => {});
     }
+  }
+
+  function requestGameplayFullscreen() {
+    if (!isTouchDevice) return;
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    if (screen.orientation && typeof screen.orientation.lock === "function") {
+      screen.orientation.lock("landscape").catch(() => {});
+    }
+  }
+
+  function refreshMobileUi() {
+    if (!mobileUi) return;
+    const visible = isTouchDevice && state.mode === "play";
+    mobileUi.classList.toggle("hidden", !visible);
+    mobileUi.setAttribute("aria-hidden", visible ? "false" : "true");
+    if (!visible) {
+      mobileInput.up = false;
+      mobileInput.down = false;
+      mobileInput.left = false;
+      mobileInput.right = false;
+      mobileInput.actionHeld = false;
+    }
+    for (const btn of mobileSlotButtons) {
+      const idx = (Number(btn.dataset.slot) || 1) - 1;
+      btn.classList.toggle("active", idx === state.inventory.selectedSlot);
+    }
+  }
+
+  function bindMobileHold(el, onDown, onUp) {
+    if (!el) return;
+    let activePointerId = null;
+    const release = (event) => {
+      if (activePointerId === null) return;
+      if (event && event.pointerId !== activePointerId) return;
+      activePointerId = null;
+      onUp();
+    };
+    el.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      activePointerId = event.pointerId;
+      el.setPointerCapture?.(event.pointerId);
+      onDown();
+    }, { passive: false });
+    el.addEventListener("pointerup", release, { passive: false });
+    el.addEventListener("pointercancel", release, { passive: false });
+    el.addEventListener("lostpointercapture", () => release(), { passive: false });
+  }
+
+  function setupMobileControls() {
+    if (!mobileUi) return;
+    mobileUi.addEventListener("contextmenu", (event) => event.preventDefault());
+    const moveMap = {
+      up: "up",
+      down: "down",
+      left: "left",
+      right: "right",
+    };
+    for (const btn of mobileMoveButtons) {
+      const dir = moveMap[String(btn.dataset.move || "")];
+      if (!dir) continue;
+      bindMobileHold(btn, () => { mobileInput[dir] = true; }, () => { mobileInput[dir] = false; });
+    }
+    bindMobileHold(
+      mobileActionBtn,
+      () => {
+        mobileInput.actionHeld = true;
+        mobileInput.nextActionAt = 0;
+        triggerUseAction();
+      },
+      () => { mobileInput.actionHeld = false; },
+    );
+    if (mobileInventoryBtn) {
+      mobileInventoryBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (state.mode === "play") setMode("inventory");
+        else if (state.mode === "inventory") setMode("play");
+      }, { passive: false });
+    }
+    for (const btn of mobileSlotButtons) {
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        const slot = Number(btn.dataset.slot);
+        if (!Number.isInteger(slot) || slot < 1 || slot > 9) return;
+        state.inventory.selectedSlot = slot - 1;
+        refreshMobileUi();
+      }, { passive: false });
+    }
+    refreshMobileUi();
   }
 
   window.addEventListener("keydown", (event) => {
@@ -4795,6 +4912,7 @@ import {
     });
   });
 
+  setupMobileControls();
   setupMultiplayerSync();
   resize();
   render();

@@ -102,6 +102,10 @@
           <button id="modeSkin" class="primary">Skin</button>
           <button id="modeAssets">Assets</button>
         </div>
+        <div class="row"><label class="small">プレイヤー</label></div>
+        <div class="row">
+          <select id="playerSelect" style="width:100%;height:32px;border-radius:8px;border:1px solid #486ca8;background:#14284f;color:#f5f7fb;padding:0 10px;"></select>
+        </div>
         <div class="row"><label class="small">アイテム(服)名</label></div>
         <div class="name-row">
           <input id="skinName" type="text" placeholder="new_skin_name" />
@@ -197,10 +201,21 @@
           "#cc1f1f", "#8f1212", "#ff6fae", "#ffb6d9", "#5328ff", "#3367ff", "#3aa8ff", "#20d4d6", "#18b253", "#0c7d33",
         ];
         const DEFAULT_FRAMES = [
-          "back_idle1", "back_idle2", "back_idle3", "back_run1", "back_run2",
-          "front_idle1", "front_idle2", "front_idle3", "front_run1", "front_run2",
-          "side_idle1", "side_idle2", "side_idle3", "side_run1", "side_run2",
-          "2side_idle1", "2side_idle2", "2side_idle3", "2side_run1", "2side_run2",
+          "back_idle1", "back_idle2", "back_run1", "back_run2",
+          "front_idle1", "front_idle2", "front_run1", "front_run2",
+          "side_idle1", "side_idle2", "side_run1", "side_run2",
+          "2side_idle1", "2side_idle2", "2side_run1", "2side_run2",
+        ];
+        const DEFAULT_TOOL_ITEMS = ["sickle", "schop", "hoes", "soil_sifter", "hammer"];
+        const PLAYER_OPTIONS = [
+          { id: "raft", label: "RAFT" },
+          { id: "mai", label: "MAI" },
+          { id: "tanutsuna", label: "TANUTSUNA" },
+          { id: "yansan", label: "YANSAN" },
+          { id: "muto", label: "MUTO" },
+          { id: "moron", label: "MORON" },
+          { id: "week", label: "WEEK" },
+          { id: "gyoza", label: "GYOZA" },
         ];
 
         const app = {
@@ -239,6 +254,7 @@
           moveDrag: false,
           moveStartPixel: null,
           moveSnapshot: null,
+          currentPlayer: "raft",
         };
         const HANDLE_DB_NAME = "yansan_skin_editor_handles_v1";
         const HANDLE_STORE_NAME = "handles";
@@ -256,6 +272,7 @@
           resizeAsset: document.getElementById("resizeAsset"),
           modeSkin: document.getElementById("modeSkin"),
           modeAssets: document.getElementById("modeAssets"),
+          playerSelect: document.getElementById("playerSelect"),
           skinName: document.getElementById("skinName"),
           addSkin: document.getElementById("addSkin"),
           newSkin: document.getElementById("newSkin"),
@@ -389,7 +406,7 @@
           els.addSkin.style.display = isSkin ? "" : "none";
           els.newSkin.style.display = isSkin ? "" : "none";
           els.assetModeWrap.style.display = isSkin ? "none" : "block";
-          els.framesTitle.textContent = isSkin ? "Frames (Yansan 全画像)" : "Assets Editor";
+          els.framesTitle.textContent = isSkin ? `Frames (${getPlayerLabel()} 全画像)` : "Assets Editor";
           els.thumbs.style.display = isSkin ? "grid" : "none";
           els.layersWrap.style.display = isSkin ? "none" : "block";
           if (isSkin) {
@@ -494,9 +511,16 @@
           if (n.startsWith("2side_")) return n.slice(1);
           return n;
         }
+        function getSkinDraftKey(skinName, playerId = app.currentPlayer) {
+          return `${String(playerId || "raft")}::${String(skinName || "").trim()}`;
+        }
+        function getPlayerLabel(playerId = app.currentPlayer) {
+          const found = PLAYER_OPTIONS.find((p) => p.id === playerId);
+          return found ? found.label : String(playerId || "raft").toUpperCase();
+        }
         function frameNameToPath(name) {
           const base = normalizeBaseFrameName(name);
-          return `assets/yansan/${base}.png`;
+          return `../../assets/player/${app.currentPlayer}/${base}.png`;
         }
         function expandFramesWith2Side(frames) {
           const out = [];
@@ -511,7 +535,12 @@
           });
           return out;
         }
-        function skinFramePath(skin, frame) { return `assets/skin/${skin}/${frame}.png`; }
+        function skinFramePath(skin, frame, playerId = app.currentPlayer) {
+          return `assets/skin/${skin}/${playerId}/${frame}.png`;
+        }
+        function legacySkinFramePath(skin, frame) {
+          return `assets/skin/${skin}/${frame}.png`;
+        }
         function hasAsset(path) {
           const p = String(path || "").replace(/^\.\//, "");
           const k = p.startsWith("assets/") ? p : `assets/${p}`;
@@ -837,13 +866,13 @@
           }
         }
 
-        async function loadLayerFromHandle(rootHandle, skinName, frameName) {
-          try {
-            const assetsRoot = await resolveAssetsRootHandle(rootHandle, false);
-            if (!assetsRoot) return createEmptyLayer();
-            const skinRoot = await assetsRoot.getDirectoryHandle("skin");
-            const skinDir = await skinRoot.getDirectoryHandle(skinName);
-            const fileHandle = await skinDir.getFileHandle(`${frameName}.png`);
+        async function loadLayerFromHandle(rootHandle, skinName, frameName, playerId = app.currentPlayer) {
+          const tryRead = async (assetsRoot, relParts) => {
+            let cursor = assetsRoot;
+            for (let i = 0; i < relParts.length - 1; i += 1) {
+              cursor = await cursor.getDirectoryHandle(relParts[i]);
+            }
+            const fileHandle = await cursor.getFileHandle(relParts[relParts.length - 1]);
             const file = await fileHandle.getFile();
             const bitmap = await createImageBitmap(file);
             const c = document.createElement("canvas");
@@ -854,17 +883,27 @@
             cx.drawImage(bitmap, 0, 0, 64, 64);
             if (typeof bitmap.close === "function") bitmap.close();
             return new Uint8ClampedArray(cx.getImageData(0, 0, 64, 64).data);
+          };
+          try {
+            const assetsRoot = await resolveAssetsRootHandle(rootHandle, false);
+            if (!assetsRoot) return createEmptyLayer();
+            try {
+              return await tryRead(assetsRoot, ["skin", skinName, playerId, `${frameName}.png`]);
+            } catch (_) {
+              return await tryRead(assetsRoot, ["skin", skinName, `${frameName}.png`]);
+            }
           } catch (_) {
             return createEmptyLayer();
           }
         }
 
-        async function saveFrameToHandle(rootHandle, skinName, frameName, dataUrl) {
+        async function saveFrameToHandle(rootHandle, skinName, frameName, dataUrl, playerId = app.currentPlayer) {
           const assetsRoot = await resolveAssetsRootHandle(rootHandle, true);
           if (!assetsRoot) throw new Error("assetsフォルダが見つかりません");
           const skinRoot = await assetsRoot.getDirectoryHandle("skin", { create: true });
           const skinDir = await skinRoot.getDirectoryHandle(skinName, { create: true });
-          const fileHandle = await skinDir.getFileHandle(`${frameName}.png`, { create: true });
+          const playerDir = await skinDir.getDirectoryHandle(playerId, { create: true });
+          const fileHandle = await playerDir.getFileHandle(`${frameName}.png`, { create: true });
           const writable = await fileHandle.createWritable();
           const b64 = dataUrl.slice("data:image/png;base64,".length);
           const buf = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -939,13 +978,15 @@
 
         function offlineBootstrap() {
           const assetFiles = new Set();
-          DEFAULT_FRAMES.forEach((f) => {
-            assetFiles.add(`assets/yansan/${normalizeBaseFrameName(f)}.png`);
+          PLAYER_OPTIONS.forEach((p) => {
+            DEFAULT_FRAMES.forEach((f) => {
+              assetFiles.add(`../../assets/player/${p.id}/${normalizeBaseFrameName(f)}.png`);
+            });
           });
-          assetFiles.add("assets/sickle.png");
+          DEFAULT_TOOL_ITEMS.forEach((tool) => assetFiles.add(`assets/${tool}.png`));
           return {
             frames: [...DEFAULT_FRAMES],
-            skins: [],
+            skins: [...DEFAULT_TOOL_ITEMS],
             assetFiles: [...assetFiles],
           };
         }
@@ -1041,7 +1082,7 @@
         function saveCurrentSkinDraft() {
           const name = String(app.skinName || "").trim();
           if (!name || !app.frames.length) return;
-          app.skinDrafts.set(name, cloneLayerMap(app.layerMap));
+          app.skinDrafts.set(getSkinDraftKey(name), cloneLayerMap(app.layerMap));
         }
 
         function mapToSerializableLayers(layerMap) {
@@ -1080,7 +1121,7 @@
             const layer = record.layers[frame] || createEmptyLayer();
             const dataUrl = layerDataToPngDataUrl(layer);
             // eslint-disable-next-line no-await-in-loop
-            await saveFrameToHandle(app.outputRootHandle, skinName, frame, dataUrl);
+            await saveFrameToHandle(app.outputRootHandle, skinName, frame, dataUrl, app.currentPlayer);
           }
         }
 
@@ -1100,7 +1141,7 @@
         function buildDeleteRecord(skinName) {
           const name = String(skinName || "").trim();
           const index = app.skins.indexOf(name);
-          const draft = app.skinDrafts.get(name);
+          const draft = app.skinDrafts.get(getSkinDraftKey(name));
           return {
             type: "delete_skin",
             name,
@@ -1118,7 +1159,7 @@
           saveCurrentSkinDraft();
           record.removedOnDisk = await removeSkinFolderIfPossible(record.name);
           app.skins = app.skins.filter((s) => s !== record.name);
-          app.skinDrafts.delete(record.name);
+          for (const p of PLAYER_OPTIONS) app.skinDrafts.delete(getSkinDraftKey(record.name, p.id));
           if (!app.skins.length) {
             app.skinName = "new_item";
             els.skinName.value = app.skinName;
@@ -1148,7 +1189,7 @@
           const beforeActive = app.skinName;
           const insertAt = Math.max(0, Math.min(record.index, app.skins.length));
           app.skins.splice(insertAt, 0, record.name);
-          if (record.layers) app.skinDrafts.set(record.name, serializableLayersToMap(record.layers));
+          if (record.layers) app.skinDrafts.set(getSkinDraftKey(record.name), serializableLayersToMap(record.layers));
           if (record.removedOnDisk && record.layers) await writeSkinFolderFromRecord(record);
           const target = record.wasActive ? record.name : (record.prevActive || app.skinName || record.name);
           app.skinName = app.skins.includes(target) ? target : record.name;
@@ -1236,7 +1277,10 @@
             return Promise.resolve();
           }
           const base = new Image();
-          base.src = frameNameToPath(frame);
+          const primaryBase = frameNameToPath(frame);
+          const fallbackBase = `assets/yansan/${normalizeBaseFrameName(frame)}.png`;
+          let fallbackTried = false;
+          base.src = primaryBase;
           const layer = app.layerMap.get(frame) || createEmptyLayer(64, 64);
           return new Promise((resolve) => {
             base.onload = () => {
@@ -1253,6 +1297,11 @@
               resolve();
             };
             base.onerror = () => {
+              if (!fallbackTried) {
+                fallbackTried = true;
+                base.src = fallbackBase;
+                return;
+              }
               ctx.clearRect(0, 0, w, h);
               resolve();
             };
@@ -1264,7 +1313,7 @@
           await drawComposedTo(paintCtx, app.currentFrame, w, h);
           if (app.editorMode === "skin") {
             await redrawThumbs();
-            els.frameInfo.textContent = `Frame: ${app.currentFrame}`;
+            els.frameInfo.textContent = `Player: ${getPlayerLabel()} / Frame: ${app.currentFrame}`;
           } else {
             els.frameInfo.textContent = `Asset: ${app.currentAssetPath || "-"} (${w}x${h})`;
             renderLayerList();
@@ -1379,6 +1428,8 @@
           const sources = [];
           const single = `assets/${itemName}.png`;
           sources.push(single);
+          app.frames.forEach((f) => sources.push(skinFramePath(itemName, f, app.currentPlayer)));
+          app.frames.forEach((f) => sources.push(legacySkinFramePath(itemName, f)));
           app.frames.forEach((f) => sources.push(`assets/${itemName}/${f}.png`));
           app.frames.forEach((f) => {
             if (f.startsWith("side_")) sources.push(`assets/${itemName}/2${f}.png`);
@@ -1489,7 +1540,7 @@
 
         async function loadSkinFrames(skinName, previousSkinName = app.skinName) {
           if (app.loaded && previousSkinName) {
-            app.skinDrafts.set(previousSkinName, cloneLayerMap(app.layerMap));
+            app.skinDrafts.set(getSkinDraftKey(previousSkinName), cloneLayerMap(app.layerMap));
           }
           app.skinName = skinName;
           els.skinName.value = skinName;
@@ -1497,15 +1548,16 @@
           app.undoMap.clear();
           app.redoMap.clear();
 
-          if (app.skinDrafts.has(skinName)) {
-            app.layerMap = cloneLayerMap(app.skinDrafts.get(skinName));
+          const draftKey = getSkinDraftKey(skinName);
+          if (app.skinDrafts.has(draftKey)) {
+            app.layerMap = cloneLayerMap(app.skinDrafts.get(draftKey));
             for (const frame of app.frames) {
               app.undoMap.set(frame, []);
               app.redoMap.set(frame, []);
             }
             await extractItemColors(skinName);
             await redrawMain();
-            setStatus(`読み込み(保持): ${skinName}`);
+            setStatus(`読み込み(保持): ${skinName} [${getPlayerLabel()}]`);
             return;
           }
 
@@ -1513,20 +1565,23 @@
             let layer = createEmptyLayer();
             if (app.offlineMode && app.outputRootHandle) {
               // eslint-disable-next-line no-await-in-loop
-              layer = await loadLayerFromHandle(app.outputRootHandle, skinName, frame);
+              layer = await loadLayerFromHandle(app.outputRootHandle, skinName, frame, app.currentPlayer);
             } else {
-              const p = skinFramePath(skinName, frame);
+              const p = skinFramePath(skinName, frame, app.currentPlayer);
+              const legacy = legacySkinFramePath(skinName, frame);
               // eslint-disable-next-line no-await-in-loop
-              layer = hasAsset(p) ? await loadLayerFromPath(p) : createEmptyLayer();
+              if (hasAsset(p)) layer = await loadLayerFromPath(p);
+              else if (hasAsset(legacy)) layer = await loadLayerFromPath(legacy);
+              else layer = createEmptyLayer();
             }
             app.layerMap.set(frame, layer);
             app.undoMap.set(frame, []);
             app.redoMap.set(frame, []);
           }
-          app.skinDrafts.set(skinName, cloneLayerMap(app.layerMap));
+          app.skinDrafts.set(draftKey, cloneLayerMap(app.layerMap));
           await extractItemColors(skinName);
           await redrawMain();
-          setStatus(`読み込み: ${skinName}`);
+          setStatus(`読み込み: ${skinName} [${getPlayerLabel()}]`);
         }
 
         async function refreshAssetPaths() {
@@ -1806,7 +1861,7 @@
             if (!app.outputRootHandle) throw new Error("先に「保存先選択(file://)」を実行してください");
             const skin = (els.skinName.value || "default_skin").trim();
             const dataUrl = layerToPngDataUrl(frame);
-            await saveFrameToHandle(app.outputRootHandle, skin, frame, dataUrl);
+            await saveFrameToHandle(app.outputRootHandle, skin, frame, dataUrl, app.currentPlayer);
             return;
           }
           const skin = (els.skinName.value || "default_skin").trim();
@@ -1815,7 +1870,7 @@
           const res = await fetch("/api/save-skin", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ skinName: skin, frameName: frame, dataUrl }),
+            body: JSON.stringify({ skinName: skin, playerName: app.currentPlayer, frameName: frame, dataUrl }),
           });
           if (!res.ok) throw new Error(`save failed: ${frame}`);
         }
@@ -1835,7 +1890,7 @@
             boot = await fetchBootstrap();
           }
           app.frames = expandFramesWith2Side(boot.frames);
-          app.skins = boot.skins;
+          app.skins = Array.isArray(boot.skins) && boot.skins.length ? boot.skins : [...DEFAULT_TOOL_ITEMS];
           app.assetFiles = new Set((boot.assetFiles || []).map((p) => String(p).replace(/^\.\//, "")));
 
           if (app.offlineMode) {
@@ -1849,13 +1904,18 @@
           await refreshAssetPaths();
 
           app.currentFrame = app.frames[0];
-          if (app.skins.length) {
-            app.skinName = app.skins[0];
-          } else {
-            app.skinName = "sickle";
-          }
+          app.skinName = app.skins.length ? app.skins[0] : "sickle";
 
           els.skinName.value = app.skinName;
+          els.playerSelect.innerHTML = "";
+          PLAYER_OPTIONS.forEach((p) => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.label;
+            els.playerSelect.appendChild(opt);
+          });
+          els.playerSelect.value = app.currentPlayer;
+          els.framesTitle.textContent = `Frames (${getPlayerLabel()} 全画像)`;
           rebuildSkinSelect();
           setEditorMode("skin");
           resizePaintCanvas(64, 64);
@@ -1879,6 +1939,11 @@
 
         els.modeSkin.addEventListener("click", () => {
           setEditorMode("skin");
+        });
+        els.playerSelect.addEventListener("change", async () => {
+          app.currentPlayer = String(els.playerSelect.value || "raft");
+          els.framesTitle.textContent = `Frames (${getPlayerLabel()} 全画像)`;
+          await loadSkinFrames(app.skinName);
         });
         els.modeAssets.addEventListener("click", async () => {
           setEditorMode("assets");
@@ -2258,7 +2323,7 @@
             app.undoMap.set(f, []);
             app.redoMap.set(f, []);
           }
-          app.skinDrafts.set(name, cloneLayerMap(app.layerMap));
+          app.skinDrafts.set(getSkinDraftKey(name), cloneLayerMap(app.layerMap));
           await extractItemColors(name);
           await redrawMain();
           setStatus(`新規: ${name}`);
@@ -2295,7 +2360,7 @@
                 // eslint-disable-next-line no-await-in-loop
                 await saveFrame(f);
               }
-              setStatus(`全部保存完了: assets/skin/${(els.skinName.value || "").trim()}`);
+              setStatus(`全部保存完了: assets/skin/${(els.skinName.value || "").trim()}/${app.currentPlayer}`);
             }
           } catch (err) {
             setStatus(`保存失敗: ${err.message}`);
