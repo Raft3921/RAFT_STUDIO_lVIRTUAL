@@ -225,9 +225,10 @@ import {
     select2: "assets/select2.png",
   };
   const SAVE_STORAGE_KEY = "yansan_farm_save_v2";
+  const CHARACTER_SAVE_STORAGE_KEY = "yansan_farm_character_state_v1";
   const LEGACY_SAVE_STORAGE_KEY = "yansan_farm_save_v1";
   const SAVE_SLOT_COUNT = 3;
-  const AUTOSAVE_INTERVAL = 5;
+  const AUTOSAVE_INTERVAL = 300;
   const CLIPPINGS_REGROWTH_SECONDS = 600;
   const CLIPPINGS_REGROWTH_MS = CLIPPINGS_REGROWTH_SECONDS * 1000;
   const DIRT_VARIANT_BY_GRASS_MASK = new Map([
@@ -1116,6 +1117,22 @@ import {
     localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(normalizeSaveCollection(collection)));
   }
 
+  function readCharacterStateCollection() {
+    try {
+      const raw = localStorage.getItem(CHARACTER_SAVE_STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeCharacterStateCollection(collection) {
+    const out = collection && typeof collection === "object" ? collection : {};
+    localStorage.setItem(CHARACTER_SAVE_STORAGE_KEY, JSON.stringify(out));
+  }
+
   function getCropVisualStage(crop, nowMs) {
     if (!crop) return 0;
     const plantedAtMs = Number(crop.plantedAtMs) || nowMs;
@@ -1379,6 +1396,42 @@ import {
       collection.lastSlot = state.activeSaveSlot;
       writeSaveCollection(collection);
       if (!auto) console.log("saved");
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }
+
+  function saveCharacterState(auto = false) {
+    const characterId = String(state.selectedCharacterId || "");
+    if (!characterId) return false;
+    try {
+      const collection = readCharacterStateCollection();
+      collection[characterId] = {
+        updatedAt: Date.now(),
+        totalPlaySeconds: Math.max(0, Number(state.currentSlotPlaySeconds) || 0),
+        payload: buildSaveData(),
+      };
+      writeCharacterStateCollection(collection);
+      if (!auto) console.log("saved character state");
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }
+
+  function loadCharacterState(characterId) {
+    const id = String(characterId || "");
+    if (!id) return false;
+    try {
+      const collection = readCharacterStateCollection();
+      const entry = collection[id];
+      if (!entry || typeof entry !== "object" || !entry.payload) return false;
+      const ok = applySaveData(entry.payload);
+      if (!ok) return false;
+      state.currentSlotPlaySeconds = Math.max(0, Number(entry.totalPlaySeconds) || state.currentSlotPlaySeconds);
       return true;
     } catch (err) {
       console.error(err);
@@ -4166,6 +4219,7 @@ import {
 
     state.selectedCharacterId = characterId;
     state.playerName = def.name;
+    loadCharacterState(characterId);
     state.mode = "play";
     requestGameplayFullscreen();
     refreshMobileUi();
@@ -4174,6 +4228,7 @@ import {
   }
 
   function releaseCharacter() {
+    saveCharacterState(true);
     if (localLockRef) {
       remove(localLockRef).catch(() => {});
       localLockRef = null;
@@ -4584,6 +4639,7 @@ import {
     state.autosaveElapsed += dt;
     if (state.autosaveElapsed >= AUTOSAVE_INTERVAL) {
       state.autosaveElapsed = 0;
+      saveCharacterState(true);
       saveGameToStorage(true);
     }
   }
