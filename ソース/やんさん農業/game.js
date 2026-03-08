@@ -42,7 +42,7 @@ import {
   const isTouchDevice = window.matchMedia("(pointer: coarse)").matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   const FARM_ASSET_ROOT = new URL("./assets/", import.meta.url).toString();
   const ROOT_ASSET_ROOT = new URL("../../assets/", import.meta.url).toString();
-  const SYNC_INTERVAL_MS = 100;
+  const SYNC_INTERVAL_MS = 80;
   const LOCK_TIMEOUT_MS = 12_000;
 
   const WORLD = {
@@ -72,7 +72,7 @@ import {
     shadowAlphaMax: 0.30,
   };
   const SHADER = {
-    enableCinematic: true,
+    enableCinematic: false,
     performanceMode: true,
     waterWaveSpeed: 1.35,
     waterDistortion: 0.1,
@@ -315,16 +315,21 @@ import {
   let db = null;
   let playersRef = null;
   let locksRef = null;
+  let worldTilesRef = null;
   let localPlayerRef = null;
   let localLockRef = null;
   let stopPlayersSync = null;
   let stopLocksSync = null;
   let stopConnectionSync = null;
+  let stopWorldTilesSync = null;
   let lastSyncAt = 0;
+  let lastWorldTilesSyncAt = 0;
   let lastFullscreenRequestAt = 0;
   let isDbConnected = false;
   let syncLastError = "";
+  let worldTilesDirty = false;
   const onlinePlayers = new Map();
+  const remoteVisualPlayers = new Map();
   const characterLocks = new Map();
   const mobileInput = {
     up: false,
@@ -671,6 +676,8 @@ import {
     inventoryUi: {
       bagRects: Array.from({ length: 27 }, () => ({ x: 0, y: 0, w: 0, h: 0 })),
       quickRects: Array.from({ length: 9 }, () => ({ x: 0, y: 0, w: 0, h: 0 })),
+      closeRect: { x: 0, y: 0, w: 0, h: 0 },
+      closePressed: false,
       hot: null,
       drag: {
         active: false,
@@ -706,6 +713,28 @@ import {
     const out = {};
     for (const [k, v] of map.entries()) out[k] = v;
     return out;
+  }
+
+  function mapsEqual(a, b) {
+    if (a.size !== b.size) return false;
+    for (const [k, v] of a.entries()) {
+      if (b.get(k) !== v) return false;
+    }
+    return true;
+  }
+
+  function setTileOverride(k, v) {
+    if (state.tileOverrides.get(k) === v) return false;
+    state.tileOverrides.set(k, v);
+    worldTilesDirty = true;
+    return true;
+  }
+
+  function deleteTileOverride(k) {
+    if (!state.tileOverrides.has(k)) return false;
+    state.tileOverrides.delete(k);
+    worldTilesDirty = true;
+    return true;
   }
 
   function objectToMap(obj) {
@@ -1252,6 +1281,7 @@ import {
     }
 
     state.tileOverrides = objectToMap(root.tileOverrides);
+    worldTilesDirty = true;
     state.clippingsTimers = objectToMap(root.clippingsTimers);
     const nowMs = Date.now();
     for (const [k, v] of state.clippingsTimers.entries()) {
@@ -1381,6 +1411,7 @@ import {
     state.inventory.selectedSlot = 0;
     state.useEffects = [];
     state.tileOverrides = new Map();
+    worldTilesDirty = true;
     state.clippingsTimers = new Map();
     state.crops = new Map();
     state.farmView.targetZoom = CAMERA.defaultZoom;
@@ -2114,7 +2145,7 @@ import {
       if (!isGrassTileImage(before)) continue;
       if (before === TILE_IMAGES.clippings) continue;
       const key = tileKey(x, y);
-      state.tileOverrides.set(key, TILE_IMAGES.clippings);
+      setTileOverride(key, TILE_IMAGES.clippings);
       state.clippingsTimers.set(key, Date.now() + CLIPPINGS_REGROWTH_MS);
       maybeDropClambonSeedAtTile(x, y);
       changed = true;
@@ -2130,7 +2161,7 @@ import {
       const before = getTileImage(x, y);
       if (before !== TILE_IMAGES.clippings) continue;
       const key = tileKey(x, y);
-      state.tileOverrides.set(key, TILE_IMAGES.stone_dirt);
+      setTileOverride(key, TILE_IMAGES.stone_dirt);
       state.clippingsTimers.delete(key);
       changed = true;
     }
@@ -2152,7 +2183,7 @@ import {
         const holePath = convertGrooveToHoleImage(before);
         if (!holePath) continue;
         removeCrop(x, y);
-        state.tileOverrides.set(key, holePath);
+        setTileOverride(key, holePath);
         const cx = x * WORLD.tileSize + WORLD.tileSize * 0.5;
         const cy = y * WORLD.tileSize + WORLD.tileSize * 0.5;
         spawnDroppedItem("clambon_seed", cx, cy, 18);
@@ -2162,7 +2193,7 @@ import {
       }
       const nextPath = convertSchopTileImage(before);
       if (!nextPath) continue;
-      state.tileOverrides.set(key, nextPath);
+      setTileOverride(key, nextPath);
       changed = true;
     }
     return changed;
@@ -2176,7 +2207,7 @@ import {
       const before = getTileImage(x, y);
       if (!isStoneDirtTileImage(before)) continue;
       const key = tileKey(x, y);
-      state.tileOverrides.set(key, TILE_IMAGES.dirt);
+      setTileOverride(key, TILE_IMAGES.dirt);
       changed = true;
     }
     if (!changed) return false;
@@ -2240,7 +2271,7 @@ import {
       const before = getTileImage(x, y);
       const nextGround = convertHoleToGrooveImage(before);
       if (nextGround) {
-        state.tileOverrides.set(tileKey(x, y), nextGround);
+        setTileOverride(tileKey(x, y), nextGround);
       }
       setCrop(x, y, {
         plantedAtMs: nowMs,
@@ -2293,7 +2324,7 @@ import {
         continue;
       }
       if (nowMs >= regrowAtMs) {
-        state.tileOverrides.delete(k);
+        deleteTileOverride(k);
         state.clippingsTimers.delete(k);
       }
     }
@@ -2407,7 +2438,7 @@ import {
     if (!sameGroup(getTileImage(tx, ty + 1))) mask |= 0b1000; // down outside
 
     const variant = variantMap.get(mask) || fallback;
-    state.tileOverrides.set(tileKey(tx, ty), variant);
+    setTileOverride(tileKey(tx, ty), variant);
   }
 
   function getConnectedDirtTileCount(startX, startY, maxVisit = 5000) {
@@ -2517,7 +2548,7 @@ import {
       const before = getTileImage(x, y);
       if (onlyFromGrass && !isGrassTileImage(before)) continue;
       if (before === tileImagePath) continue;
-      state.tileOverrides.set(tileKey(x, y), tileImagePath);
+      setTileOverride(tileKey(x, y), tileImagePath);
       changed = true;
     }
     return changed;
@@ -3082,9 +3113,30 @@ import {
     }
   }
 
-  function drawPlayer(pass = "all") {
-    const p = worldToScreen(state.player.x, state.player.y);
-    const { key, image, flip } = getPlayerSprite();
+  function updateRemoteVisualPlayers(dt) {
+    const t = 1 - Math.exp(-12 * dt);
+    for (const [id, p] of onlinePlayers.entries()) {
+      if (!p || typeof p !== "object") continue;
+      const tx = Number(p.x) || 0;
+      const ty = Number(p.y) || 0;
+      const existing = remoteVisualPlayers.get(id);
+      if (!existing) {
+        remoteVisualPlayers.set(id, { x: tx, y: ty, raw: p });
+        continue;
+      }
+      existing.x += (tx - existing.x) * t;
+      existing.y += (ty - existing.y) * t;
+      existing.raw = p;
+    }
+    for (const id of remoteVisualPlayers.keys()) {
+      if (!onlinePlayers.has(id)) remoteVisualPlayers.delete(id);
+    }
+  }
+
+  function drawCharacterEntity(entity, pass = "all") {
+    const p = worldToScreen(entity.x, entity.y);
+    const key = getPlayerSpriteKey(entity);
+    const image = loadSprite(key, entity.characterId);
     const isSide = key.startsWith("side_");
     if (!isSide && pass === "front") return;
 
@@ -3096,6 +3148,7 @@ import {
     const shadowRx = PLAYER.hitRadiusWorld * 1.05 * CAMERA.zoom;
     const shadowRy = PLAYER.hitRadiusWorld * 0.4 * CAMERA.zoom;
     const drawFullSprite = !isSide || pass === "all";
+    const flip = entity.facing === "right";
 
     if (pass !== "front") {
       ctx.fillStyle = "rgba(0,0,0,0.2)";
@@ -3130,103 +3183,76 @@ import {
 
     if (image.complete && image.naturalWidth > 0) {
       ctx.drawImage(image, -targetW * 0.5, 0, targetW, targetH);
-    } else {
+    } else if (entity.isLocal) {
       ctx.fillStyle = "#f6cf52";
       ctx.fillRect(-targetW * 0.4, 0, targetW * 0.8, targetH * 0.92);
     }
 
-    const held = getSelectedItemKind();
-    if (held && ITEMS[held] && ITEMS[held].overlayFolder) {
-      const folder = ITEMS[held].overlayFolder;
-      let overlayPath = `assets/skin/${folder}/${key}.png`;
-      if (key.startsWith("side_") && state.player.facing === "right") {
-        overlayPath = `assets/skin/${folder}/2${key}.png`;
-      }
-      const overlay = loadImage(overlayPath);
-      if (overlay.complete && overlay.naturalWidth > 0) {
-        ctx.drawImage(overlay, -targetW * 0.5, 0, targetW, targetH);
+    if (entity.isLocal) {
+      const held = getSelectedItemKind();
+      if (held && ITEMS[held] && ITEMS[held].overlayFolder) {
+        const folder = ITEMS[held].overlayFolder;
+        let overlayPath = `assets/skin/${folder}/${key}.png`;
+        if (key.startsWith("side_") && entity.facing === "right") {
+          overlayPath = `assets/skin/${folder}/2${key}.png`;
+        }
+        const overlay = loadImage(overlayPath);
+        if (overlay.complete && overlay.naturalWidth > 0) {
+          ctx.drawImage(overlay, -targetW * 0.5, 0, targetW, targetH);
+        }
       }
     }
-
     ctx.restore();
+
+    if (!entity.isLocal && (pass === "all" || pass === "front")) {
+      ctx.fillStyle = "rgba(15,24,18,0.92)";
+      ctx.font = `bold ${Math.max(10, Math.floor(12 * CAMERA.zoom))}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(String(entity.name || entity.characterId), p.x, p.y - targetH * 0.98);
+    }
   }
 
-  function drawRemotePlayers(pass = "all") {
-    const remote = [];
-    for (const p of onlinePlayers.values()) {
-      if (!p || typeof p !== "object" || !p.characterId) continue;
-      remote.push(p);
+  function buildDrawCharacters(includeLocal = true) {
+    const list = [];
+    if (includeLocal && state.selectedCharacterId) {
+      list.push({
+        x: state.player.x,
+        y: state.player.y,
+        speed: state.player.speed,
+        moving: state.player.speed > 10,
+        facing: state.player.facing,
+        idleFrameIndex: state.player.idleFrameIndex,
+        runFrameIndex: state.player.runFrameIndex,
+        characterId: state.selectedCharacterId,
+        name: state.playerName || state.selectedCharacterId.toUpperCase(),
+        isLocal: true,
+      });
     }
-    remote.sort((a, b) => (Number(a.y) || 0) - (Number(b.y) || 0));
-
-    for (const rp of remote) {
-      const px = Number(rp.x) || 0;
-      const py = Number(rp.y) || 0;
-      const facing = rp.facing || "front";
-      const p = worldToScreen(px, py);
-      const key = getPlayerSpriteKey({
+    for (const [id, vr] of remoteVisualPlayers.entries()) {
+      const rp = vr.raw;
+      if (!rp || typeof rp !== "object" || !rp.characterId) continue;
+      list.push({
+        x: vr.x,
+        y: vr.y,
         speed: Number(rp.speed) || 0,
         moving: Boolean(rp.moving),
-        facing,
+        facing: rp.facing || "front",
         idleFrameIndex: Number(rp.idleFrameIndex) || 0,
         runFrameIndex: Number(rp.runFrameIndex) || 0,
+        characterId: rp.characterId,
+        name: rp.name || rp.characterId,
+        isLocal: false,
+        id,
       });
-      const image = loadSprite(key, rp.characterId);
-      const isSide = key.startsWith("side_");
-      if (!isSide && pass === "front") continue;
-
-      const targetH = PLAYER.drawHeight * CAMERA.zoom;
-      const ratio = image && image.naturalWidth > 0 && image.naturalHeight > 0
-        ? image.naturalWidth / image.naturalHeight
-        : 0.78;
-      const targetW = targetH * ratio;
-      const shadowRx = PLAYER.hitRadiusWorld * 1.05 * CAMERA.zoom;
-      const shadowRy = PLAYER.hitRadiusWorld * 0.4 * CAMERA.zoom;
-      const drawFullSprite = !isSide || pass === "all";
-      const flip = facing === "right";
-
-      if (pass !== "front") {
-        ctx.fillStyle = "rgba(0,0,0,0.2)";
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y + shadowRy * 0.2, shadowRx, shadowRy, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.save();
-      ctx.translate(p.x, p.y - targetH * 0.9);
-      if (flip) ctx.scale(-1, 1);
-      if (!drawFullSprite) {
-        const left = -targetW * 0.5;
-        const backIsLeft = flip;
-        const frontWidthRatio = 0.34;
-        const frontHeightRatio = 0.5;
-        const frontW = targetW * frontWidthRatio;
-        const frontH = targetH * frontHeightRatio;
-        const frontX = backIsLeft ? left : (left + targetW - frontW);
-        const backW = targetW - frontW;
-        const backX = backIsLeft ? (left + frontW) : left;
-        ctx.beginPath();
-        if (pass === "back") {
-          ctx.rect(backX, 0, backW, targetH);
-          ctx.rect(frontX, frontH, frontW, targetH - frontH);
-        } else {
-          ctx.rect(frontX, 0, frontW, frontH);
-        }
-        ctx.clip();
-      }
-      if (image.complete && image.naturalWidth > 0) {
-        ctx.drawImage(image, -targetW * 0.5, 0, targetW, targetH);
-      }
-      ctx.restore();
-
-      if (pass === "all" || pass === "front") {
-        ctx.fillStyle = "rgba(15,24,18,0.92)";
-        ctx.font = `bold ${Math.max(10, Math.floor(12 * CAMERA.zoom))}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        ctx.fillText(String(rp.name || rp.characterId), p.x, p.y - targetH * 0.98);
-      }
     }
+    list.sort((a, b) => (Number(a.y) || 0) - (Number(b.y) || 0));
+    return list;
+  }
+
+  function drawCharacters(pass = "all", includeLocal = true) {
+    const list = buildDrawCharacters(includeLocal);
+    for (const entity of list) drawCharacterEntity(entity, pass);
   }
 
   function drawCollisionDebug() {
@@ -3730,19 +3756,28 @@ import {
   function drawSaveSelectScreen() {
     const slots = getSaveSlotsView();
     const uiScale = Math.max(2, Math.min(4, Math.floor(Math.min(canvas.clientWidth / 560, canvas.clientHeight / 320))));
-    const cardW = Math.floor(canvas.clientWidth * 0.25);
-    const cardH = Math.floor(canvas.clientHeight * 0.48);
-    const gap = Math.max(16, Math.floor(canvas.clientWidth * 0.03));
-    const totalW = cardW * 3 + gap * 2;
+    const cols = canvas.clientWidth < 860 ? 1 : 3;
+    const rows = Math.ceil(SAVE_SLOT_COUNT / cols);
+    const gap = Math.max(10, Math.floor(canvas.clientWidth * 0.018));
+    const topPad = Math.floor(canvas.clientHeight * 0.16);
+    const bottomPad = 18;
+    const availableW = Math.max(220, canvas.clientWidth - 20);
+    const availableH = Math.max(240, canvas.clientHeight - topPad - bottomPad);
+    const cardW = Math.max(180, Math.floor((availableW - (cols - 1) * gap) / cols));
+    const cardH = Math.max(130, Math.floor((availableH - (rows - 1) * gap) / rows));
+    const totalW = cardW * cols + gap * (cols - 1);
     const startX = Math.floor((canvas.clientWidth - totalW) * 0.5);
-    const y = Math.floor(canvas.clientHeight * 0.28);
+    const startY = topPad;
 
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 
     for (let i = 0; i < 3; i += 1) {
       const slot = slots[i];
-      const x = startX + i * (cardW + gap);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = startX + col * (cardW + gap);
+      const y = startY + row * (cardH + gap);
       const r = { x, y, w: cardW, h: cardH };
       state.saveSelectUi.cards[i].cardRect = r;
       drawPanelFrame(r.x, r.y, r.w, r.h, uiScale);
@@ -3889,16 +3924,38 @@ import {
     const slotSel = loadImage(UI_IMAGES.slot_on);
     const srcW = (slotBase.complete && slotBase.naturalWidth > 0) ? slotBase.naturalWidth : 16;
     const srcH = (slotBase.complete && slotBase.naturalHeight > 0) ? slotBase.naturalHeight : 16;
-    const slotScale = Math.max(4, Math.round(64 / Math.max(srcW, srcH)));
+    const bagCols = canvas.clientWidth >= canvas.clientHeight ? 9 : 6;
+    const bagRows = Math.ceil(27 / bagCols);
+    const gapBase = 6;
+    const pad = 10;
+    const closeW = 92;
+    const closeH = 36;
+    const topY = pad + closeH + 8;
+    const availW = Math.max(180, canvas.clientWidth - pad * 2);
+    const availH = Math.max(160, canvas.clientHeight - topY - pad);
+    const maxScaleW = Math.floor((availW - (bagCols - 1) * gapBase) / (bagCols * srcW));
+    const maxScaleH = Math.floor((availH - (bagRows - 1) * gapBase) / (bagRows * srcH));
+    const slotScale = Math.max(1, Math.min(4, maxScaleW, maxScaleH));
     const slotW = srcW * slotScale;
     const slotH = srcH * slotScale;
-    const gap = Math.max(6, Math.floor(slotScale * 2));
-    const bagCols = 3;
-    const bagRows = 9;
+    const gap = Math.max(3, Math.floor(slotScale * 1.2));
     const bagW = bagCols * slotW + (bagCols - 1) * gap;
     const bagH = bagRows * slotH + (bagRows - 1) * gap;
-    const bagStartX = Math.max(14, Math.floor(canvas.clientWidth * 0.1));
-    const topY = Math.max(10, Math.floor((canvas.clientHeight - bagH) * 0.5));
+    const bagStartX = Math.max(pad, Math.floor((canvas.clientWidth - bagW) * 0.5));
+    const bagStartY = Math.max(topY, Math.floor((canvas.clientHeight - bagH) * 0.5));
+
+    state.inventoryUi.closeRect = {
+      x: canvas.clientWidth - closeW - pad,
+      y: pad,
+      w: closeW,
+      h: closeH,
+    };
+    drawTabButton(
+      state.inventoryUi.closeRect,
+      "閉じる",
+      state.inventoryUi.closePressed,
+      Math.max(1, Math.min(3, Math.floor(slotScale * 0.9))),
+    );
 
     const drawSlotEntry = (area, index, x, y, selected) => {
       const hot = state.inventoryUi.hot && state.inventoryUi.hot.area === area && state.inventoryUi.hot.index === index;
@@ -3934,7 +3991,7 @@ import {
       const col = i % bagCols;
       const row = Math.floor(i / bagCols);
       const x = bagStartX + col * (slotW + gap);
-      const y = topY + row * (slotH + gap);
+      const y = bagStartY + row * (slotH + gap);
       state.inventoryUi.bagRects[i] = { x, y, w: slotW, h: slotH };
       drawSlotEntry("bag", i, x, y, false);
     }
@@ -4088,6 +4145,7 @@ import {
     db = getDatabase(app);
     playersRef = ref(db, `${state.syncUi.roomPath}/players`);
     locksRef = ref(db, `${state.syncUi.roomPath}/locks`);
+    worldTilesRef = ref(db, `${state.syncUi.roomPath}/world/tileOverrides`);
     localPlayerRef = ref(db, `${state.syncUi.roomPath}/players/${clientId}`);
     const connectedRef = ref(db, ".info/connected");
 
@@ -4100,6 +4158,9 @@ import {
         if (!v || typeof v !== "object") return;
         onlinePlayers.set(c.key, v);
       });
+      for (const id of remoteVisualPlayers.keys()) {
+        if (!onlinePlayers.has(id)) remoteVisualPlayers.delete(id);
+      }
     }, (err) => setSyncError(err));
     stopLocksSync = onValue(locksRef, (snapshot) => {
       refreshLocks(snapshot);
@@ -4114,12 +4175,28 @@ import {
       isDbConnected = snapshot.val() === true;
       if (isDbConnected) syncLastError = "";
     }, (err) => setSyncError(err));
+    stopWorldTilesSync = onValue(worldTilesRef, (snapshot) => {
+      const src = snapshot.exists() && snapshot.val() && typeof snapshot.val() === "object"
+        ? snapshot.val()
+        : {};
+      const next = new Map();
+      for (const [k, v] of Object.entries(src)) {
+        if (!k || typeof v !== "string") continue;
+        next.set(k, v);
+      }
+      if (!mapsEqual(state.tileOverrides, next)) {
+        state.tileOverrides = next;
+        state.clippingsTimers.clear();
+      }
+      worldTilesDirty = false;
+    }, (err) => setSyncError(err));
     onDisconnect(localPlayerRef).remove().catch((err) => setSyncError(err));
     window.addEventListener("beforeunload", () => {
       releaseCharacter();
       stopPlayersSync?.();
       stopLocksSync?.();
       stopConnectionSync?.();
+      stopWorldTilesSync?.();
     });
   }
 
@@ -4149,13 +4226,20 @@ import {
         name: state.playerName || state.selectedCharacterId.toUpperCase(),
       }).catch((err) => setSyncError(err));
     }
+    if (worldTilesRef && (worldTilesDirty || force) && (force || now - lastWorldTilesSyncAt >= 150)) {
+      lastWorldTilesSyncAt = now;
+      set(worldTilesRef, mapToObject(state.tileOverrides))
+        .then(() => { worldTilesDirty = false; })
+        .catch((err) => setSyncError(err));
+    }
   }
 
   function drawCharacterSelectScreen() {
     ctx.fillStyle = "rgba(0,0,0,0.58)";
     ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
     ctx.fillStyle = "rgba(242,247,239,0.98)";
-    ctx.font = "bold 64px sans-serif";
+    const titleScale = Math.max(0.52, Math.min(1, canvas.clientWidth / 1200));
+    ctx.font = `bold ${Math.floor(64 * titleScale)}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("SEKECT PLAYER", canvas.clientWidth * 0.5, 16);
@@ -4181,13 +4265,18 @@ import {
     ctx.fillText("COPY URL", canvas.clientWidth * 0.5, 132);
 
     state.syncUi.cardRects = [];
-    const cols = 4;
-    const cardW = Math.max(130, Math.floor(canvas.clientWidth * 0.2));
-    const cardH = Math.max(160, Math.floor(canvas.clientHeight * 0.26));
-    const gap = 14;
+    const cols = canvas.clientWidth < 720 ? 2 : (canvas.clientWidth < 1080 ? 3 : 4);
+    const rows = Math.ceil(CHARACTER_DEFS.length / cols);
+    const gap = canvas.clientWidth < 720 ? 8 : 12;
+    const startY = 166;
+    const footerPad = 56;
+    const availableW = Math.max(240, canvas.clientWidth - 24);
+    const availableH = Math.max(260, canvas.clientHeight - startY - footerPad);
+    const cardW = Math.max(92, Math.floor((availableW - (cols - 1) * gap) / cols));
+    const cardH = Math.max(118, Math.floor((availableH - (rows - 1) * gap) / rows));
     const totalW = cols * cardW + (cols - 1) * gap;
     const startX = Math.floor((canvas.clientWidth - totalW) * 0.5);
-    const startY = 168;
+    const cardScale = Math.max(0.56, Math.min(1, Math.min(cardW / 180, cardH / 220)));
 
     for (let i = 0; i < CHARACTER_DEFS.length; i += 1) {
       const c = CHARACTER_DEFS[i];
@@ -4211,7 +4300,7 @@ import {
 
       const key = animation.frontIdle[Math.floor((state.time * 3) % animation.frontIdle.length)];
       const img = loadSprite(key, c.id);
-      const size = Math.floor(Math.min(cardW, cardH) * 0.45);
+      const size = Math.floor(Math.min(cardW, cardH) * 0.43);
       if (img.complete && img.naturalWidth > 0) {
         ctx.drawImage(img, x + (cardW - size) * 0.5, y + 14, size, size);
       }
@@ -4219,7 +4308,7 @@ import {
       ctx.fillStyle = blocked ? "#e24a4a" : "#26b85c";
       ctx.fillRect(x + 16, y + Math.floor(cardH * 0.56), 10, 10);
       ctx.fillStyle = "#1f2a21";
-      ctx.font = "bold 30px sans-serif";
+      ctx.font = `bold ${Math.max(14, Math.floor(30 * cardScale))}px sans-serif`;
       ctx.fillText(c.name, x + cardW * 0.5, y + Math.floor(cardH * 0.52));
 
       const playY = y + cardH - 36;
@@ -4237,7 +4326,7 @@ import {
         ctx.strokeRect(x + 12, playY, cardW - 24, 24);
       }
       ctx.fillStyle = blocked ? "#ffd9d9" : "#102015";
-      ctx.font = "bold 22px sans-serif";
+      ctx.font = `bold ${Math.max(13, Math.floor(22 * cardScale))}px sans-serif`;
       ctx.fillText("PLAY", x + cardW * 0.5, playY + 2);
     }
 
@@ -4315,6 +4404,7 @@ import {
     state.saveSelectUi.pressedDeleteIndex = -1;
     state.saveSelectUi.editNameIndex = -1;
     state.inventoryUi.hot = null;
+    state.inventoryUi.closePressed = false;
     state.inventoryUi.drag.active = false;
     state.inventoryUi.drag.sourceType = "";
     state.inventoryUi.drag.sourceIndex = -1;
@@ -4418,6 +4508,7 @@ import {
     updateAdaptiveFarmZoom(dt);
     updateClippingsRegrowth(dt);
     updateUseEffects(dt);
+    updateRemoteVisualPlayers(dt);
     updateCamera(dt);
     if (state.mode === "play" && mobileInput.actionHeld) {
       const now = performance.now();
@@ -4441,7 +4532,7 @@ import {
     if (state.mode === "char_select") {
       drawGrassTiles();
       drawUpperTileLayers(false);
-      drawRemotePlayers("all");
+      drawCharacters("all", false);
       drawCharacterSelectScreen();
       refreshMobileUi();
       return;
@@ -4454,8 +4545,7 @@ import {
     drawWorldItems();
     drawCrops();
     drawUseEffects();
-    drawRemotePlayers("back");
-    drawPlayer("back");
+    drawCharacters("back", true);
     drawUpperTileLayers(true);
     const playerScreen = worldToScreen(state.player.x, state.player.y);
     const playerW = PLAYER.drawHeight * CAMERA.zoom * 0.78;
@@ -4468,8 +4558,7 @@ import {
       h: hideTopH,
     });
     drawWorldBarriers("front");
-    drawRemotePlayers("front");
-    drawPlayer("front");
+    drawCharacters("front", true);
     drawTimeOfDayOverlay();
     drawCollisionDebug();
     drawClockHud();
@@ -4495,6 +4584,7 @@ import {
       update(clamped);
     } else {
       state.time += clamped;
+      updateRemoteVisualPlayers(clamped);
     }
     render();
   }
@@ -4605,7 +4695,7 @@ import {
 
   function refreshMobileUi() {
     if (!mobileUi) return;
-    const visible = isTouchDevice && state.mode === "play";
+    const visible = isTouchDevice && (state.mode === "play" || state.mode === "inventory");
     mobileUi.classList.toggle("hidden", !visible);
     mobileUi.setAttribute("aria-hidden", visible ? "false" : "true");
     if (!visible) {
@@ -4745,6 +4835,8 @@ import {
     if (event.key === "Escape" || event.key === "p" || event.key === "P") {
       if (state.mode === "play") {
         setMode("pause");
+      } else if (state.mode === "inventory") {
+        setMode("play");
       } else if (state.mode === "pause") {
         setMode("play");
       }
@@ -4818,6 +4910,10 @@ import {
     }
     if (state.mode === "inventory") {
       if (event.button !== 0) return;
+      if (pointInRect(x, y, state.inventoryUi.closeRect)) {
+        state.inventoryUi.closePressed = true;
+        return;
+      }
       const hit = getInventorySlotAt(x, y);
       state.inventoryUi.hot = hit;
       if (!hit) return;
@@ -4927,6 +5023,13 @@ import {
         state.pauseUi.pressed = "";
         if (clicked) handlePauseButton(clicked);
       } else {
+        if (state.inventoryUi.closePressed) {
+          state.inventoryUi.closePressed = false;
+          if (pointInRect(x, y, state.inventoryUi.closeRect)) {
+            setMode("play");
+            return;
+          }
+        }
         if (!state.inventoryUi.drag.active) return;
         const target = getInventorySlotAt(x, y);
         performInventoryDrop(target);
