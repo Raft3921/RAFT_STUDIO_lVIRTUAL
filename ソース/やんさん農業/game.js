@@ -352,6 +352,7 @@ import {
     actionHeld: false,
     nextActionAt: 0,
   };
+  const touchHudPointers = new Map();
 
   const animation = {
     sideIdle: ["side_idle1", "side_idle2"],
@@ -690,6 +691,7 @@ import {
       bagRects: Array.from({ length: 27 }, () => ({ x: 0, y: 0, w: 0, h: 0 })),
       quickRects: Array.from({ length: 9 }, () => ({ x: 0, y: 0, w: 0, h: 0 })),
       closeRect: { x: 0, y: 0, w: 0, h: 0 },
+      quickBarReserve: 0,
       closePressed: false,
       hot: null,
       drag: {
@@ -3494,7 +3496,13 @@ import {
     const totalH = slotCount * slotH + (slotCount - 1) * gap;
     const totalW = slotCount * slotW + (slotCount - 1) * gap;
     const startX = compact ? Math.max(8, Math.floor((canvas.clientWidth - totalW) * 0.5)) : (canvas.clientWidth - slotW - 16);
-    const startY = compact ? Math.max(8, canvas.clientHeight - slotH - 76) : Math.max(14, Math.floor((canvas.clientHeight - totalH) * 0.5));
+    const inventoryBottomPad = state.mode === "inventory"
+      ? Math.max(6, Math.floor(slotH * 0.18))
+      : Math.max(8, Math.floor(slotH * 0.2));
+    state.inventoryUi.quickBarReserve = slotH + inventoryBottomPad + 10;
+    const startY = compact
+      ? Math.max(8, canvas.clientHeight - slotH - inventoryBottomPad)
+      : Math.max(14, Math.floor((canvas.clientHeight - totalH) * 0.5));
 
     for (let i = 0; i < slotCount; i += 1) {
       const x = compact ? startX + i * (slotW + gap) : startX;
@@ -4067,7 +4075,8 @@ import {
     const closeH = 36;
     const topY = pad + closeH + 8;
     const availW = Math.max(180, canvas.clientWidth - pad * 2);
-    const availH = Math.max(160, canvas.clientHeight - topY - pad);
+    const quickBarReserve = Math.max(56, state.inventoryUi.quickBarReserve || 0);
+    const availH = Math.max(120, canvas.clientHeight - topY - pad - quickBarReserve);
     const maxScaleW = Math.floor((availW - (bagCols - 1) * gapBase) / (bagCols * srcW));
     const maxScaleH = Math.floor((availH - (bagRows - 1) * gapBase) / (bagRows * srcH));
     const slotScale = Math.max(1, Math.min(4, maxScaleW, maxScaleH));
@@ -4077,7 +4086,7 @@ import {
     const bagW = bagCols * slotW + (bagCols - 1) * gap;
     const bagH = bagRows * slotH + (bagRows - 1) * gap;
     const bagStartX = Math.max(pad, Math.floor((canvas.clientWidth - bagW) * 0.5));
-    const bagStartY = Math.max(topY, Math.floor((canvas.clientHeight - bagH) * 0.5));
+    const bagStartY = Math.max(topY, Math.floor((topY + availH - bagH) * 0.5));
 
     state.inventoryUi.closeRect = {
       x: canvas.clientWidth - closeW - pad,
@@ -4586,15 +4595,44 @@ import {
     refreshMobileUi();
   }
 
+  function syncTouchHudFromPointers() {
+    let up = false;
+    let down = false;
+    let left = false;
+    let right = false;
+    let action = false;
+    for (const control of touchHudPointers.values()) {
+      if (control === "up") up = true;
+      else if (control === "down") down = true;
+      else if (control === "left") left = true;
+      else if (control === "right") right = true;
+      else if (control === "use") action = true;
+    }
+    mobileInput.up = up;
+    mobileInput.down = down;
+    mobileInput.left = left;
+    mobileInput.right = right;
+    mobileInput.actionHeld = action;
+    if (touchHudPointers.size) {
+      let last = "";
+      for (const control of touchHudPointers.values()) last = control;
+      state.touchHud.active = last;
+    } else {
+      state.touchHud.active = "";
+    }
+    return true;
+  }
+
   function clearTouchHudInput(pointerId = null) {
-    if (pointerId !== null && state.touchHud.pointerId !== pointerId) return false;
-    state.touchHud.active = "";
-    state.touchHud.pointerId = null;
-    mobileInput.up = false;
-    mobileInput.down = false;
-    mobileInput.left = false;
-    mobileInput.right = false;
-    mobileInput.actionHeld = false;
+    if (pointerId !== null) {
+      if (!touchHudPointers.has(pointerId)) return false;
+      touchHudPointers.delete(pointerId);
+      if (state.touchHud.pointerId === pointerId) state.touchHud.pointerId = null;
+    } else {
+      touchHudPointers.clear();
+      state.touchHud.pointerId = null;
+    }
+    syncTouchHudFromPointers();
     return true;
   }
 
@@ -5086,16 +5124,13 @@ import {
         canvas.setPointerCapture?.(event.pointerId);
         state.touchHud.active = hudHit;
         state.touchHud.pointerId = event.pointerId;
-        mobileInput.up = hudHit === "up";
-        mobileInput.down = hudHit === "down";
-        mobileInput.left = hudHit === "left";
-        mobileInput.right = hudHit === "right";
+        touchHudPointers.set(event.pointerId, hudHit);
+        syncTouchHudFromPointers();
         if (hudHit === "zoom_in") {
           adjustManualZoom(-CAMERA_ZOOM_STEP);
         } else if (hudHit === "zoom_out") {
           adjustManualZoom(CAMERA_ZOOM_STEP);
         } else if (hudHit === "use") {
-          mobileInput.actionHeld = true;
           mobileInput.nextActionAt = 0;
           triggerUseAction();
         } else if (hudHit === "inventory") {
