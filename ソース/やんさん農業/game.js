@@ -3543,12 +3543,12 @@ import {
     const totalH = slotCount * slotH + (slotCount - 1) * gap;
     const totalW = slotCount * slotW + (slotCount - 1) * gap;
     const startX = compact ? Math.max(8, Math.floor((canvas.clientWidth - totalW) * 0.5)) : (canvas.clientWidth - slotW - 16);
-    const inventoryBottomPad = state.mode === "inventory"
-      ? Math.max(6, Math.floor(slotH * 0.18))
-      : Math.max(8, Math.floor(slotH * 0.2));
-    state.inventoryUi.quickBarReserve = slotH + inventoryBottomPad + 10;
+    const bottomSafePad = state.mode === "inventory"
+      ? Math.max(18, Math.floor(slotH * 0.34))
+      : (isTouchDevice ? Math.max(42, Math.floor(slotH * 0.9)) : Math.max(18, Math.floor(slotH * 0.34)));
+    state.inventoryUi.quickBarReserve = slotH + bottomSafePad + 10;
     const startY = compact
-      ? Math.max(8, canvas.clientHeight - slotH - inventoryBottomPad)
+      ? Math.max(8, canvas.clientHeight - slotH - bottomSafePad)
       : Math.max(14, Math.floor((canvas.clientHeight - totalH) * 0.5));
 
     for (let i = 0; i < slotCount; i += 1) {
