@@ -7,6 +7,7 @@ import {
   remove,
   runTransaction,
   set,
+  update,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 (() => {
@@ -342,6 +343,7 @@ import {
   let isDbConnected = false;
   let syncLastError = "";
   let worldTilesDirty = false;
+  const pendingTilePatches = new Map();
   const onlinePlayers = new Map();
   const remoteVisualPlayers = new Map();
   const characterLocks = new Map();
@@ -761,6 +763,7 @@ import {
   function setTileOverride(k, v) {
     if (state.tileOverrides.get(k) === v) return false;
     state.tileOverrides.set(k, v);
+    pendingTilePatches.set(k, v);
     worldTilesDirty = true;
     return true;
   }
@@ -768,6 +771,7 @@ import {
   function deleteTileOverride(k) {
     if (!state.tileOverrides.has(k)) return false;
     state.tileOverrides.delete(k);
+    pendingTilePatches.set(k, null);
     worldTilesDirty = true;
     return true;
   }
@@ -1373,6 +1377,7 @@ import {
     applyCollectedToolVisibility();
 
     state.tileOverrides = objectToMap(root.tileOverrides);
+    pendingTilePatches.clear();
     worldTilesDirty = true;
     state.clippingsTimers = objectToMap(root.clippingsTimers);
     const nowMs = Date.now();
@@ -1541,6 +1546,7 @@ import {
     state.inventory.selectedSlot = 0;
     state.useEffects = [];
     state.tileOverrides = new Map();
+    pendingTilePatches.clear();
     worldTilesDirty = true;
     state.clippingsTimers = new Map();
     state.crops = new Map();
@@ -2016,8 +2022,7 @@ import {
   function triggerUseAction() {
     const held = getSelectedItemKind();
     const handler = held ? ITEM_USE_HANDLERS[held] : null;
-    if (!handler) return;
-    const changed = !!handler();
+    const changed = handler ? !!handler() : tryHarvestClambonAtForwardTile();
     if (!changed) return;
     state.useEffects.push({
       x: state.player.x,
@@ -4401,11 +4406,16 @@ import {
         if (!k || typeof v !== "string") continue;
         next.set(k, v);
       }
+      // Keep unsent local edits so incoming remote updates do not wipe them.
+      for (const [k, v] of pendingTilePatches.entries()) {
+        if (typeof v === "string") next.set(k, v);
+        else next.delete(k);
+      }
       if (!mapsEqual(state.tileOverrides, next)) {
         state.tileOverrides = next;
         state.clippingsTimers.clear();
       }
-      worldTilesDirty = false;
+      worldTilesDirty = pendingTilePatches.size > 0;
     }, (err) => setSyncError(err));
     onDisconnect(localPlayerRef).remove().catch((err) => setSyncError(err));
     window.addEventListener("beforeunload", () => {
@@ -4443,10 +4453,18 @@ import {
         name: state.playerName || state.selectedCharacterId.toUpperCase(),
       }).catch((err) => setSyncError(err));
     }
-    if (worldTilesRef && (worldTilesDirty || force) && (force || now - lastWorldTilesSyncAt >= 150)) {
+    if (worldTilesRef && pendingTilePatches.size > 0 && (force || now - lastWorldTilesSyncAt >= 150)) {
       lastWorldTilesSyncAt = now;
-      set(worldTilesRef, mapToObject(state.tileOverrides))
-        .then(() => { worldTilesDirty = false; })
+      const sent = new Map(pendingTilePatches);
+      const patch = {};
+      for (const [k, v] of sent.entries()) patch[k] = v === null ? null : v;
+      update(worldTilesRef, patch)
+        .then(() => {
+          for (const [k, v] of sent.entries()) {
+            if (pendingTilePatches.get(k) === v) pendingTilePatches.delete(k);
+          }
+          worldTilesDirty = pendingTilePatches.size > 0;
+        })
         .catch((err) => setSyncError(err));
     }
   }
