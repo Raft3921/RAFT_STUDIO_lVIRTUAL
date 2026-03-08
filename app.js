@@ -37,6 +37,8 @@ const PLAYER_DECEL = 900;
 const LOCK_TIMEOUT_MS = 10_000;
 const PLAYER_TIMEOUT_MS = 15_000;
 const STEP_SEC = 1 / 60;
+const RUN_ANIM_FPS = 6;
+const IDLE_ANIM_FPS = 3;
 const NETWORK_SYNC_INTERVAL_MS = 80;
 const REMOTE_SMOOTH_RATE = 14;
 const REMOTE_SNAP_DISTANCE = 220;
@@ -705,8 +707,8 @@ function drawActor(player, cameraX, cameraY, zoom) {
   const screenX = Math.round((player.x - cameraX) * zoom);
   const screenY = Math.round((player.y - cameraY) * zoom);
   const frame = player.moving
-    ? [3, 1, 4, 1][Math.floor(animClock * 10) % 4]
-    : Math.floor(animClock * 5) % 2 === 0
+    ? [3, 1, 4, 1][Math.floor(animClock * RUN_ANIM_FPS) % 4]
+    : Math.floor(animClock * IDLE_ANIM_FPS) % 2 === 0
       ? 1
       : 2;
   const sprite = getSpriteImage(player.characterId, player.dir, player.moving, frame);
@@ -857,7 +859,7 @@ function drawSelectionUi() {
   uiState.selectionActions.push({ action: "copy", rect: copyRect });
 
   const { left, top, cols, scale, cardW, cardH, gap } = getSelectionLayout();
-  const frame = Math.floor(animClock * 5) % 2 === 0 ? 1 : 2;
+  const frame = Math.floor(animClock * IDLE_ANIM_FPS) % 2 === 0 ? 1 : 2;
 
   CHARACTER_DEFS.forEach((def, index) => {
     const col = index % cols;
