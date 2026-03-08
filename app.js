@@ -722,7 +722,7 @@ function drawActor(player, cameraX, cameraY, zoom) {
   ctx.fill();
 
   ctx.save();
-  if (player.dir === "right") {
+  if (player.dir === "left") {
     ctx.translate(Math.round(screenX + spriteHalf), Math.round(screenY - spriteHalf));
     ctx.scale(-1, 1);
     ctx.drawImage(drawable, 0, 0, spriteSize, spriteSize);
