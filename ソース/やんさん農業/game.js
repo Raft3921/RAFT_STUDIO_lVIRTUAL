@@ -3741,6 +3741,21 @@ import {
     showSyncToast("保存しました", 1400);
   }
 
+  function resetWorldEdits() {
+    const previousKeys = [...state.tileOverrides.keys()];
+    state.tileOverrides = new Map();
+    pendingTilePatches.clear();
+    for (const key of previousKeys) pendingTilePatches.set(key, null);
+    state.clippingsTimers.clear();
+    state.crops = new Map();
+    applyTerrainSaveData(null);
+    worldTilesDirty = pendingTilePatches.size > 0;
+    saveCharacterState(true);
+    saveGameToStorage(true);
+    syncLocalPlayer(true);
+    showSyncToast("リセットしました", 1600);
+  }
+
   function drawUseEffects() {
     for (const fx of state.useEffects) {
       const t = fx.age / fx.duration;
@@ -5098,6 +5113,12 @@ import {
     if (isTouchDevice) {
       const key = String(event.key || "");
       if (key && key !== "Unidentified") keyboardAttachedOnTouch = true;
+    }
+    if (event.key === "F11") {
+      const ok = window.confirm("リセットしますか？");
+      if (ok) resetWorldEdits();
+      event.preventDefault();
+      return;
     }
     if (event.key === "F9") {
       forceClearAllCharacters();
