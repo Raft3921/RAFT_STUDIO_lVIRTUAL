@@ -688,6 +688,7 @@ import {
     pauseUi: {
       saveRect: { x: 0, y: 0, w: 0, h: 0 },
       loadRect: { x: 0, y: 0, w: 0, h: 0 },
+      resetRect: { x: 0, y: 0, w: 0, h: 0 },
       titleRect: { x: 0, y: 0, w: 0, h: 0 },
       resumeRect: { x: 0, y: 0, w: 0, h: 0 },
       hot: "",
@@ -3721,6 +3722,31 @@ import {
     drawActionButton(state.touchHud.saveRect, "保存", state.touchHud.active === "save");
   }
 
+  function drawUtilityButtons() {
+    if (state.mode !== "play") return;
+    const uiScale = Math.max(1, Math.min(2, Math.floor(Math.min(canvas.clientWidth / 480, canvas.clientHeight / 300))));
+    const w = 96 * uiScale;
+    const h = 28 * uiScale;
+    const pad = 10;
+    const gap = 6;
+    const saveX = canvas.clientWidth - w - pad;
+    const y = pad + 6;
+    const resetX = saveX - w - gap;
+    state.touchHud.resetRect = { x: resetX, y, w, h };
+    state.touchHud.saveRect = { x: saveX, y, w, h };
+    drawTabButton(state.touchHud.resetRect, "リセット", state.touchHud.active === "reset", uiScale);
+    drawTabButton(state.touchHud.saveRect, "保存", state.touchHud.active === "save", uiScale);
+  }
+
+  function getButtonIdAtPause(x, y) {
+    if (pointInRect(x, y, state.pauseUi.saveRect)) return "save";
+    if (pointInRect(x, y, state.pauseUi.loadRect)) return "load";
+    if (pointInRect(x, y, state.pauseUi.resetRect)) return "reset";
+    if (pointInRect(x, y, state.pauseUi.titleRect)) return "title";
+    if (pointInRect(x, y, state.pauseUi.resumeRect)) return "resume";
+    return "";
+  }
+
   function getTouchHudHit(x, y) {
     if (pointInRect(x, y, state.touchHud.upRect)) return "up";
     if (pointInRect(x, y, state.touchHud.leftRect)) return "left";
@@ -3730,6 +3756,7 @@ import {
     if (pointInRect(x, y, state.touchHud.zoomOutRect)) return "zoom_out";
     if (pointInRect(x, y, state.touchHud.useRect)) return "use";
     if (pointInRect(x, y, state.touchHud.inventoryRect)) return "inventory";
+    if (pointInRect(x, y, state.touchHud.resetRect)) return "reset";
     if (pointInRect(x, y, state.touchHud.saveRect)) return "save";
     return "";
   }
@@ -3754,6 +3781,18 @@ import {
     saveGameToStorage(true);
     syncLocalPlayer(true);
     showSyncToast("リセットしました", 1600);
+  }
+
+  function confirmResetWorldEdits() {
+    const ok = window.confirm("リセットしますか？");
+    if (ok) resetWorldEdits();
+  }
+
+  function isWorldResetShortcut(event) {
+    return event.key === "F11"
+      || event.code === "F11"
+      || event.which === 122
+      || event.keyCode === 122;
   }
 
   function drawUseEffects() {
@@ -4143,11 +4182,13 @@ import {
 
     state.pauseUi.saveRect = { x: btnX, y: listTop, w: btnW, h: btnH };
     state.pauseUi.loadRect = { x: btnX, y: listTop + (btnH + gap), w: btnW, h: btnH };
-    state.pauseUi.titleRect = { x: btnX, y: listTop + (btnH + gap) * 2, w: btnW, h: btnH };
-    state.pauseUi.resumeRect = { x: btnX, y: listTop + (btnH + gap) * 3, w: btnW, h: btnH };
+    state.pauseUi.resetRect = { x: btnX, y: listTop + (btnH + gap) * 2, w: btnW, h: btnH };
+    state.pauseUi.titleRect = { x: btnX, y: listTop + (btnH + gap) * 3, w: btnW, h: btnH };
+    state.pauseUi.resumeRect = { x: btnX, y: listTop + (btnH + gap) * 4, w: btnW, h: btnH };
 
     drawTabButton(state.pauseUi.saveRect, "セーブ", state.pauseUi.hot === "save" || state.pauseUi.pressed === "save", uiScale);
     drawTabButton(state.pauseUi.loadRect, "ロード", state.pauseUi.hot === "load" || state.pauseUi.pressed === "load", uiScale);
+    drawTabButton(state.pauseUi.resetRect, "リセット", state.pauseUi.hot === "reset" || state.pauseUi.pressed === "reset", uiScale);
     drawTabButton(state.pauseUi.titleRect, "タイトルへ", state.pauseUi.hot === "title" || state.pauseUi.pressed === "title", uiScale);
     drawTabButton(state.pauseUi.resumeRect, "ゲームへ", state.pauseUi.hot === "resume" || state.pauseUi.pressed === "resume", uiScale);
   }
@@ -4708,14 +4749,6 @@ import {
     return -1;
   }
 
-  function getButtonIdAtPause(x, y) {
-    if (pointInRect(x, y, state.pauseUi.saveRect)) return "save";
-    if (pointInRect(x, y, state.pauseUi.loadRect)) return "load";
-    if (pointInRect(x, y, state.pauseUi.titleRect)) return "title";
-    if (pointInRect(x, y, state.pauseUi.resumeRect)) return "resume";
-    return "";
-  }
-
   function getCharacterCardIdAt(x, y) {
     for (let i = 0; i < state.syncUi.cardRects.length; i += 1) {
       const card = state.syncUi.cardRects[i];
@@ -4869,6 +4902,10 @@ import {
       loadGameFromStorage();
       return;
     }
+    if (id === "reset") {
+      confirmResetWorldEdits();
+      return;
+    }
     if (id === "title") {
       releaseCharacter();
       setMode("char_select");
@@ -4943,6 +4980,7 @@ import {
     drawTimeOfDayOverlay();
     drawCollisionDebug();
     drawClockHud();
+    drawUtilityButtons();
     if (state.mode === "inventory") {
       drawInventoryScreen();
       drawInventoryUI();
@@ -5114,9 +5152,8 @@ import {
       const key = String(event.key || "");
       if (key && key !== "Unidentified") keyboardAttachedOnTouch = true;
     }
-    if (event.key === "F11") {
-      const ok = window.confirm("リセットしますか？");
-      if (ok) resetWorldEdits();
+    if (isWorldResetShortcut(event)) {
+      confirmResetWorldEdits();
       event.preventDefault();
       return;
     }
@@ -5301,6 +5338,8 @@ import {
           triggerUseAction();
         } else if (hudHit === "inventory") {
           setMode("inventory");
+        } else if (hudHit === "reset") {
+          confirmResetWorldEdits();
         } else if (hudHit === "save") {
           saveWorldNow();
         }
